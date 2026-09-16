@@ -1,7 +1,7 @@
-"""Redundancy checks: one long per stack, no falling-red or white-only fires.
+"""Redundancy checks: fire only on a real punch, never on leftovers or dips.
 
 July 8 2026 MNQ stacks from the replay log. Signal, arm gate, and engine
-must agree on every row. Already-stacked rising longs fire once, then STACK_USED.
+must agree on every row.
 """
 
 from __future__ import annotations
@@ -118,7 +118,6 @@ def _cfg() -> Mark2Config:
     cfg.EMA_CHOP_LONG = False
     cfg.EMA_BULL_FADE_SHORT = False
     cfg.EMA_LONG_REQUIRES_BEARISH = False
-    cfg.ACCOUNT_RISK_PROFILE = "OFF"
     return cfg
 
 
@@ -150,12 +149,12 @@ TAPE = (
     ("03:23 red still under white", JUL08_0323_WHITE_ONLY, False, False, "NO_SNIPER"),
     ("03:24 through white, not blue", JUL08_0324_THROUGH_WHITE, False, False, "WHITE_ONLY"),
     ("03:25 first through-both while 20/50 bearish", JUL08_0325_SNIPER, False, True, "EMA_INTERSECTION_LONG"),
-    ("03:26 leftover same stack", JUL08_0326_LEFTOVER, True, False, "STACK_USED"),
+    ("03:26 leftover same stack", JUL08_0326_LEFTOVER, True, False, "STACK_STALE"),
     ("04:02 red dips under white", JUL08_0402_DIP, True, False, "RED_FALLING"),
     ("04:11 red still under white", JUL08_0411_UNDER_WHITE, False, False, "NO_SNIPER"),
-    ("04:12 white recross already through blue", JUL08_0412_BULL, False, True, "EMA_INTERSECTION_LONG"),
-    ("04:12 recross after a dip even if lock still set", JUL08_0412_BULL, True, True, "EMA_INTERSECTION_LONG"),
-    ("04:13 leftover after the 04:12 long", JUL08_0413_LEFTOVER, True, False, "STACK_USED"),
+    ("04:12 white recross already through blue", JUL08_0412_BULL, False, False, "STACK_STALE"),
+    ("04:12 same leftover punch is not a new 9/50", JUL08_0412_BULL, True, False, "STACK_STALE"),
+    ("04:13 leftover after the 04:12 long", JUL08_0413_LEFTOVER, True, False, "STACK_STALE"),
     ("falling red already through both", FALLING_THROUGH_BOTH, False, False, "RED_FALLING"),
 )
 
@@ -214,8 +213,8 @@ def test_live_tick_never_fires_bull_or_unconfirmed_sniper() -> None:
         live_tick=True,
     )
     assert fire is False
-    assert why == "EMA_INTERSECTION_LONG"
-    assert reason == "WAIT_CLOSE"
+    assert why == ""
+    assert reason == "STACK_STALE"
 
     fire, reason, why = ema_long_decision(
         JUL08_0325_SNIPER,
@@ -234,11 +233,11 @@ def test_live_scan_agrees_with_arm_gate() -> None:
     cases = (
         (JUL08_0412_BULL, JUL08_0324_THROUGH_WHITE, "EMA_INTERSECTION_LONG", "WAIT_CLOSE"),
         (JUL08_0325_SNIPER, JUL08_0324_THROUGH_WHITE, "EMA_INTERSECTION_LONG", "WAIT_CLOSE"),
-        (JUL08_0326_LEFTOVER, JUL08_0326_LEFTOVER, "EMA_INTERSECTION_LONG", "STACK_USED"),
+        (JUL08_0326_LEFTOVER, JUL08_0326_LEFTOVER, "EMA_INTERSECTION_LONG", "STACK_STALE"),
     )
     for live, done, why, block in cases:
         eng = _engine()
-        eng._ema_long_stack_taken = block == "STACK_USED"
+        eng._ema_long_stack_taken = False
         eng.completed_bars = [
             {"time": f"t{i}", "open": 100.0, "high": 101.0, "low": 99.0, "close": 100.0, "volume": 10}
             for i in range(16)
@@ -267,10 +266,11 @@ def test_one_long_per_stack_then_fresh_punch_after_dip() -> None:
     first, _, why1 = ema_long_decision(JUL08_0325_SNIPER, cfg, stack_taken=False)
     assert first is True and why1 == "EMA_INTERSECTION_LONG"
     leftover, reason, _ = ema_long_decision(JUL08_0326_LEFTOVER, cfg, stack_taken=True)
-    assert leftover is False and reason == "STACK_USED"
+    assert leftover is False and reason == "STACK_STALE"
     assert stack_lock_should_clear(JUL08_0402_DIP) is True
     second, reason2, why2 = ema_long_decision(JUL08_0412_BULL, cfg, stack_taken=True)
-    assert second is True and why2 == "EMA_INTERSECTION_LONG" and reason2 == ""
+    assert second is False and reason2 == "STACK_STALE"
+    assert why2 == ""
 
 
 def test_leftover_spray_cannot_arm_three_times() -> None:
@@ -385,8 +385,8 @@ def test_chaotic_requires_red_through_white_and_blue() -> None:
     assert fire is True
     assert why == "EMA_INTERSECTION_LONG"
     fire, reason, why = ema_long_decision(JUL08_0412_BULL, cfg, regime="CHAOTIC")
-    assert fire is True
-    assert why == "EMA_INTERSECTION_LONG"
+    assert fire is False
+    assert reason == "STACK_STALE"
 
 
 def test_choppy_does_not_take_white_only() -> None:
@@ -398,8 +398,8 @@ def test_choppy_does_not_take_white_only() -> None:
     assert fire is True
     assert why == "EMA_INTERSECTION_LONG"
     fire, reason, why = ema_long_decision(JUL08_0412_BULL, cfg, regime="CHOPPY")
-    assert fire is True
-    assert why == "EMA_INTERSECTION_LONG"
+    assert fire is False
+    assert reason == "STACK_STALE"
 
 
 def test_engine_arms_choppy_through_both() -> None:
@@ -470,8 +470,8 @@ def test_trending_or_high_vol_still_fire() -> None:
     assert fire is True
     assert why == "EMA_INTERSECTION_LONG"
     fire, reason, why = ema_long_decision(JUL08_0412_BULL, cfg, regime="TRENDING")
-    assert fire is True
-    assert why == "EMA_INTERSECTION_LONG"
+    assert fire is False
+    assert reason == "STACK_STALE"
 
 
 def test_punch_helpers_match_tape() -> None:

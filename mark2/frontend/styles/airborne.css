@@ -124,8 +124,8 @@
 }
 
 #btn-enable.on {
-  border-color: #00ff41;
-  box-shadow: 0 0 20px rgba(0, 255, 65, 0.55);
+  border-color: var(--eclipse);
+  box-shadow: 0 0 20px rgba(255, 193, 74, 0.35);
 }
 
 .tune-section-head {
@@ -139,10 +139,14 @@
 
 @keyframes airborne-boot {
   from {
+    opacity: 0;
     transform: translateY(6px);
+    filter: blur(2px);
   }
   to {
+    opacity: 1;
     transform: none;
+    filter: none;
   }
 }
 

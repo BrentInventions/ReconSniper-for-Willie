@@ -1,4 +1,4 @@
-"""AI Scout: stacked rising longs are a take. Leftover shorts stay HOLD."""
+"""AI Scout: intersection only — no leftover stack hops."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from mark2.types import ScoreBundle, Side, Tick
 
 
 def _leftover_long() -> EmaStack:
-    """Already stacked and still rising — valid leftover long."""
+    """Already stacked — not a new intersection."""
     return EmaStack(
         ema9=28989.10,
         ema20=28977.94,
@@ -77,30 +77,16 @@ def test_scout_overrides_missed_long_fire() -> None:
     assert view.why == "AI_SCOUT_OVERRIDE_LONG"
 
 
-def test_scout_overrides_missed_leftover_long() -> None:
-    view = scout_opportunity(
-        stack=_leftover_long(),
-        price=29020.00,
-        atr=16.80,
-        bot_watch="NOT_BEARISH",
-        missed_side=Side.LONG,
-        missed_why="EMA_INTERSECTION_LONG",
-    )
-    assert view.action == "OVERRIDE"
-    assert view.side == Side.LONG
-    assert view.why == "AI_SCOUT_OVERRIDE_LONG"
-
-
-def test_scout_takes_leftover_bull_stack() -> None:
+def test_scout_holds_leftover_bull_stack() -> None:
     view = scout_opportunity(
         stack=_leftover_long(),
         price=29020.00,
         atr=16.80,
         bot_watch="NOT_BEARISH",
     )
-    assert view.action == "TAKE"
-    assert view.side == Side.LONG
-    assert view.why == "AI_SCOUT_LONG"
+    assert view.action == "HOLD"
+    assert view.side == Side.NONE
+    assert view.why == "WAIT_CROSS"
 
 
 def test_scout_takes_fresh_intersection_long() -> None:
@@ -147,14 +133,11 @@ def test_scout_holds_leftover_bear_stack() -> None:
 
 
 def test_scout_takes_fresh_intersection_short() -> None:
-    cfg = Mark2Config()
-    cfg.AI_SCOUT_SHORT = True
     view = scout_opportunity(
         stack=_fresh_short(),
         price=28950.00,
         atr=18.00,
         bot_watch="WAIT",
-        cfg=cfg,
     )
     assert view.action == "TAKE"
     assert view.side == Side.SHORT
@@ -184,7 +167,6 @@ def _engine(**kwargs):
     cfg.ENABLE_AI_SCOUT = True
     cfg.AI_SCOUT_PAPER_FALLBACK = True
     cfg.EMA_ALLOW_SHORT = True
-    cfg.ACCOUNT_RISK_PROFILE = "OFF"
     for k, v in kwargs.items():
         setattr(cfg, k, v)
     eng = Mark2Engine(cfg)
@@ -195,33 +177,8 @@ def _engine(**kwargs):
     return eng
 
 
-def test_live_reject_does_not_fake_paper() -> None:
-    eng = _engine(MODE="LIVE", AI_SCOUT_PAPER_FALLBACK=False)
-    eng.risk.connected = False
-    eng.execution.sink = None
-    tick = Tick(ts=1.0, price=28997.75)
-    from mark2.types import EventRecord, EventType
-
-    ev = EventRecord(
-        event_id=1,
-        event_type=EventType.EMA_CROSS,
-        direction=Side.LONG,
-        started_ts=1.0,
-        started_bar_time="t1",
-        started_price=28997.75,
-    )
-    eng.events.active = ev
-    eng._last_entry_tags = {"trigger": "EMA_SNIPER_LONG", "book": "", "rsi": ""}
-    from mark2.types import MarketSnapshot
-
-    snap = MarketSnapshot(ts=1.0, price=28997.75, completed_bars=[], forming_bar=None, atr=18.18)
-    result = eng._arm_and_maybe_execute(tick, snap, ScoreBundle(), ev)
-    assert result == "REJECT_RISK"
-    assert eng.paper is None
-
-
-def test_paper_fallback_still_optional() -> None:
-    eng = _engine(MODE="LIVE", AI_SCOUT_PAPER_FALLBACK=True)
+def test_live_reject_still_creates_paper() -> None:
+    eng = _engine(MODE="LIVE")
     eng.risk.connected = False
     eng.execution.sink = None
     tick = Tick(ts=1.0, price=28997.75)
@@ -246,7 +203,7 @@ def test_paper_fallback_still_optional() -> None:
     assert eng.paper.side == Side.LONG
 
 
-def test_scout_override_leftover_long_enters() -> None:
+def test_scout_does_not_take_leftover_stack() -> None:
     eng = _engine()
     tick = Tick(ts=1.0, price=29020.00)
     from mark2.types import MarketSnapshot
@@ -254,53 +211,9 @@ def test_scout_override_leftover_long_enters() -> None:
     snap = MarketSnapshot(ts=1.0, price=29020.00, completed_bars=[], forming_bar=None, atr=16.80)
     eng._ema_watch = "NOT_BEARISH"
     eng._ema_atr = lambda: 16.80  # type: ignore[method-assign]
-    eng._scout_missed_side = Side.LONG
-    eng._scout_missed_why = "EMA_INTERSECTION_LONG"
     out = eng._scout_on_flat(tick, snap, ScoreBundle(), _leftover_long())
-    assert out is not None
-    assert out["decision"] == "PAPER_EXECUTE"
-    assert out["reject"] == ""
-    assert eng.paper is not None
-    assert eng.paper.side == Side.LONG
-    assert eng._scout_view.action == "OVERRIDE"
-    assert eng.paper.ema_entry_tag == "AI_SCOUT_OVERRIDE_LONG"
-
-
-def test_live_override_reject_does_not_keep_hud_override() -> None:
-    eng = _engine(MODE="LIVE", AI_SCOUT_PAPER_FALLBACK=False)
-    eng.risk.connected = False
-    eng.execution.sink = None
-    tick = Tick(ts=1.0, price=29020.00)
-    from mark2.types import MarketSnapshot
-
-    snap = MarketSnapshot(ts=1.0, price=29020.00, completed_bars=[], forming_bar=None, atr=16.80)
-    eng._ema_atr = lambda: 16.80  # type: ignore[method-assign]
-    eng._scout_missed_side = Side.LONG
-    eng._scout_missed_why = "EMA_SNIPER_LONG"
-    out = eng._scout_on_flat(tick, snap, ScoreBundle(), _leftover_long())
+    assert out is None
     assert eng.paper is None
-    assert out is not None
-    assert out["reject"] == "REJECT_RISK"
-    assert eng._scout_view.action == "HOLD"
-    assert eng._scout_view.why == "REJECT_RISK"
-    assert eng._scout_view.miss is False
-    hud = eng._scout_view.hud()
-    assert hud["action"] == "HOLD"
-    assert hud["miss"] is False
-
-
-def test_scout_takes_leftover_long_stack() -> None:
-    eng = _engine()
-    tick = Tick(ts=1.0, price=29020.00)
-    from mark2.types import MarketSnapshot
-
-    snap = MarketSnapshot(ts=1.0, price=29020.00, completed_bars=[], forming_bar=None, atr=16.80)
-    eng._ema_watch = "NOT_BEARISH"
-    eng._ema_atr = lambda: 16.80  # type: ignore[method-assign]
-    out = eng._scout_on_flat(tick, snap, ScoreBundle(), _leftover_long())
-    assert out is not None
-    assert eng.paper is not None
-    assert eng.paper.side == Side.LONG
 
 
 def test_scout_puts_engine_in_fresh_long() -> None:

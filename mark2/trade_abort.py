@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .config import Mark2Config
+from .config import Mark2Config, thesis_abort_enabled
 from .types import MarketSnapshot, ScoreBundle, Side
 
 
@@ -24,9 +24,12 @@ def check_thesis_abort(
     bad_streak: int,
     event_alive: bool,
     chop_scalp: bool = False,
+    manual_entry: bool = False,
 ) -> tuple[bool, str, int]:
     """Return (abort_now, detail_reason, updated_bad_streak)."""
-    if not bool(getattr(cfg, "ENABLE_MOMENTUM_EXIT", True)):
+    if not bool(getattr(cfg, "ENABLE_THESIS_ABORT", False)) or not thesis_abort_enabled(cfg):
+        return False, "", bad_streak
+    if manual_entry:
         return False, "", bad_streak
 
     conf = scores.long_confidence if side == Side.LONG else scores.short_confidence
@@ -63,8 +66,6 @@ def check_thesis_abort(
         instant.append("vel_hard")
     if opp_conf >= conf + opp_lead + 4:
         instant.append("opp_flip")
-    if not event_alive:
-        instant.append("event_dead")
 
     if signed_vel <= vel_cut:
         soft.append("vel")
@@ -74,6 +75,8 @@ def check_thesis_abort(
         soft.append("acc")
     if opp_conf > conf + opp_lead:
         soft.append("opp")
+    if not event_alive and bool(getattr(cfg, "ENABLE_EVENT_ABORT", False)):
+        soft.append("event_dead")
 
     if instant:
         return True, "+".join(instant), 0

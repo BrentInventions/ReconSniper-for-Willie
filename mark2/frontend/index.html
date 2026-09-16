@@ -4,10 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>RECON SNIPER</title>
-  <link rel="icon" type="image/x-icon" href="assets/icons/impulse-pro.ico" />
-  <link rel="icon" type="image/png" href="assets/icons/favicon.png" />
+  <link rel="icon" type="image/png" href="assets/icons/recon-sniper-logo.png" />
   <link rel="stylesheet" href="styles/theme.css" />
-  <link rel="stylesheet" href="styles/ironman.css" />
   <link rel="stylesheet" href="styles/layout.css" />
   <link rel="stylesheet" href="styles/hud.css" />
 </head>
@@ -17,8 +15,6 @@
       <div class="ambient-field"></div>
       <div class="logo-watermark"></div>
       <div class="cyber-grid"></div>
-      <div class="orb orb-a"></div>
-      <div class="orb orb-b"></div>
       <canvas class="motes-canvas" id="motes"></canvas>
       <div class="vignette"></div>
       <div class="scanlines"></div>
@@ -26,9 +22,9 @@
       <svg class="frame-svg" viewBox="0 0 1600 900" preserveAspectRatio="none">
         <defs>
           <linearGradient id="neonStroke" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#e10600"/>
-            <stop offset="50%" stop-color="#ff3b2f"/>
-            <stop offset="100%" stop-color="#c41616"/>
+            <stop offset="0%" stop-color="#00f0ff"/>
+            <stop offset="50%" stop-color="#ff00aa"/>
+            <stop offset="100%" stop-color="#00ff88"/>
           </linearGradient>
           <filter id="neonGlow">
             <feGaussianBlur stdDeviation="2" result="blur"/>
@@ -39,10 +35,10 @@
           </filter>
         </defs>
         <rect x="18" y="18" width="1564" height="864" fill="none" stroke="url(#neonStroke)" stroke-width="1.2" opacity="0.55" filter="url(#neonGlow)"/>
-        <path d="M40 70 V40 H70" fill="none" stroke="#e10600" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
-        <path d="M1530 70 V40 H1560" fill="none" stroke="#ff3b2f" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
-        <path d="M40 830 V860 H70" fill="none" stroke="#ff3b2f" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
-        <path d="M1530 830 V860 H1560" fill="none" stroke="#e10600" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
+        <path d="M40 70 V40 H70" fill="none" stroke="#00f0ff" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
+        <path d="M1530 70 V40 H1560" fill="none" stroke="#ff00aa" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
+        <path d="M40 830 V860 H70" fill="none" stroke="#ff00aa" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
+        <path d="M1530 830 V860 H1560" fill="none" stroke="#00f0ff" stroke-width="2" opacity="0.85" filter="url(#neonGlow)"/>
       </svg>
     </div>
     <div class="shell-frame" aria-hidden="true"></div>
@@ -50,7 +46,7 @@
     <div class="hud-shell">
       <header id="brand" class="panel brand-slot">
         <div class="brand-row">
-          <img class="brand-logo" src="assets/icons/impulse-pro-mark.png" alt="Recon Sniper" width="72" height="72" />
+          <img class="brand-logo" src="assets/icons/recon-sniper-logo.png" alt="Recon Sniper" width="72" height="72" />
           <div class="wordmark" id="wordmark">RECON <span>SNIPER</span></div>
           <div class="brand-meta">
             <span class="chip" id="chip-mode">NT LIVE</span>
@@ -85,7 +81,7 @@
               <span class="dev-sep">///</span>
               THIS BOT IS DEVELOPED BY <strong>BrentBangz</strong><span class="dev-cursor">▮</span>
               <span class="dev-sep">///</span>
-              <span class="dev-tag">TRADE WITH PURPOSE</span>
+              <span class="dev-tag">NEURAL LINK ACTIVE</span>
               <span class="dev-sep">///</span>
             </span>
             <span class="dev-ticker-chunk" aria-hidden="true">
@@ -93,7 +89,7 @@
               <span class="dev-sep">///</span>
               THIS BOT IS DEVELOPED BY <strong>BrentBangz</strong><span class="dev-cursor">▮</span>
               <span class="dev-sep">///</span>
-              <span class="dev-tag">TRADE WITH PURPOSE</span>
+              <span class="dev-tag">NEURAL LINK ACTIVE</span>
               <span class="dev-sep">///</span>
             </span>
           </div>
@@ -102,7 +98,6 @@
 
       <nav class="hud-tab-bar" aria-label="HUD views">
         <button type="button" class="hud-tab is-active" data-view="trade">TRADE</button>
-        <button type="button" class="hud-tab" data-view="strategy">ENTRY / EXIT</button>
         <button type="button" class="hud-tab" data-view="logs">PNL LOG</button>
         <button type="button" class="hud-tab" data-view="tuning">ENTRY TUNING</button>
       </nav>
@@ -136,27 +131,6 @@
       <section id="core-panel" class="panel glass">
         <div class="panel-head"><span class="tick"></span> EVENT ENGINE <span class="badge" id="core-badge">WATCHING</span></div>
         <div class="panel-body">
-          <div class="rsi-gauge" id="rsi-gauge" title="RSI(14) — flashes in OB/OS trading zones">
-            <div class="rsi-head">
-              <span class="rsi-label">RSI 14</span>
-              <span class="rsi-zone" id="rsi-zone">NEUTRAL</span>
-            </div>
-            <div class="rsi-value" id="rsi-value">—</div>
-            <div class="rsi-track" aria-hidden="true">
-              <div class="rsi-marks"><span>25</span><span>50</span><span>75</span></div>
-              <div class="rsi-bar"><i id="rsi-bar"></i></div>
-              <div class="rsi-needle" id="rsi-needle"></div>
-            </div>
-            <div class="rsi-meta">
-              <span>EXT ↑/↓ <b id="rsi-ext">—</b></span>
-              <span>MOM <b id="rsi-mom">—</b></span>
-            </div>
-            <div class="rsi-meta">
-              <span>MACD Δ <b id="rsi-macd">—</b></span>
-              <span>CHASE L/S <b id="rsi-chase">—</b></span>
-            </div>
-          </div>
-          <div class="core-stack">
           <div class="state-track" id="state-track"></div>
           <div class="trade-banner idle" id="trade-banner">FLAT · WATCHING</div>
           <div class="event-card" id="event-card"><div class="idle">NO ACTIVE EVENT</div></div>
@@ -186,6 +160,25 @@
             <span>VELOCITY <b id="kv-velocity">—</b></span>
             <span>IMPULSE <b id="kv-impulse">—</b></span>
           </div>
+          <div class="rsi-gauge" id="rsi-gauge" title="RSI(14) — flashes in OB/OS trading zones">
+            <div class="rsi-head">
+              <span class="rsi-label">RSI 14</span>
+              <span class="rsi-zone" id="rsi-zone">NEUTRAL</span>
+            </div>
+            <div class="rsi-value" id="rsi-value">—</div>
+            <div class="rsi-track" aria-hidden="true">
+              <div class="rsi-marks"><span>25</span><span>50</span><span>75</span></div>
+              <div class="rsi-bar"><i id="rsi-bar"></i></div>
+              <div class="rsi-needle" id="rsi-needle"></div>
+            </div>
+            <div class="rsi-meta">
+              <span>EXT ↑/↓ <b id="rsi-ext">—</b></span>
+              <span>MOM <b id="rsi-mom">—</b></span>
+            </div>
+            <div class="rsi-meta">
+              <span>MACD Δ <b id="rsi-macd">—</b></span>
+              <span>CHASE L/S <b id="rsi-chase">—</b></span>
+            </div>
           </div>
         </div>
       </section>
@@ -206,21 +199,8 @@
       </section>
 
       <section id="log-panel" class="panel glass">
-        <div class="panel-head"><span class="tick"></span> DECISIONS <span class="badge" id="acct-risk-badge">ARMED</span></div>
+        <div class="panel-head"><span class="tick"></span> DECISIONS</div>
         <div class="panel-body">
-          <div class="acct-risk" id="acct-risk">
-            <div class="acct-risk-title">ACCOUNT RISK</div>
-            <div class="acct-risk-grid">
-              <span>Profile</span><b id="acct-profile">OFF</b>
-              <span>Equity</span><b id="acct-equity">—</b>
-              <span>Daily P&amp;L</span><b id="acct-daily">—</b>
-              <span>Daily loss limit</span><b id="acct-daily-lim">—</b>
-              <span>Trade risk</span><b id="acct-trade-risk">—</b>
-              <span>Allowed risk</span><b id="acct-allowed">—</b>
-              <span>Contracts</span><b id="acct-qty">1 / 1</b>
-            </div>
-            <div class="acct-risk-state" id="acct-risk-state">Risk State: ARMED</div>
-          </div>
           <div class="log" id="log"></div>
         </div>
       </section>
@@ -242,10 +222,6 @@
           </div>
           <div class="plog-list" id="plog-list" role="list"></div>
           <div class="plog-empty" id="plog-empty">No trades this session</div>
-          <div class="stats-decisions">
-            <div class="stats-decisions-head">DECISIONS</div>
-            <div class="log" id="log-stats"></div>
-          </div>
         </div>
       </section>
 
@@ -281,9 +257,7 @@
             <span class="qty-bank" id="stop-dollars">$40</span>
           </div>
           <div class="ctrl-row manual-row">
-            <button type="button" class="btn-buy" id="btn-buy" title="Market long at current qty. Exit control takes over after NT fill.">BUY</button>
-            <button type="button" class="btn-sell" id="btn-sell" title="Market short at current qty. Exit control takes over after NT fill.">SHORT</button>
-            <button type="button" class="danger" id="btn-flat" title="Flatten the live position">EXIT</button>
+            <button class="danger" id="btn-flat">Exit</button>
           </div>
           <div class="ctrl-row">
             <button id="btn-enable" title="Disarmed — click to arm. No trades until this flashes.">ARM</button>
@@ -291,187 +265,11 @@
           </div>
           <div class="ctrl-row">
             <button type="button" id="btn-ema-strategy" class="btn-ema-strategy" title="Bearish sniper: red through white and blue.">EMA 9/20</button>
-            <button type="button" id="btn-grow-mode" class="btn-grow-mode" title="Off lets the $100 tip trail / 70% MFE runner work. On banks a $50+ stall.">GROW BANK</button>
           </div>
-          <div class="hint">Port <span id="hint-port">5564</span> · <span id="hint-bridge">ReconSniperBridge</span> · <span id="hint-license">LICENSE: REQUIRED</span> · strategy on ENTRY / EXIT</div>
+          <div class="hint">Port <span id="hint-port">5564</span> · <span id="hint-bridge">ReconSniperBridge</span> · not candle-close entries</div>
         </div>
       </section>
           </div>
-        </div>
-
-        <div class="hud-view" id="view-strategy">
-          <section id="strategy-panel" class="panel glass">
-            <div class="panel-head">
-              <span class="tick"></span> ENTRY / EXIT
-              <span class="badge" id="strategy-badge">LIVE</span>
-            </div>
-            <div class="panel-body strategy-body">
-              <div class="strategy-col">
-                <div class="tune-section-head">ENTRY</div>
-                <label class="tune-check"><input type="checkbox" data-strategy="leftover_long" /> Leftover stacked longs</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="one_per_stack" /> One leftover per stack</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="ema_quality_filter" /> EMA long quality filter</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="allow_long" /> Allow longs</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="allow_short" /> Allow shorts</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="long_sniper" /> Sniper / intersection longs</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="breakout_413" /> 413 long breakout</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="momentum_barriers" title="One switch: pauses EMA/413/scout entries, keeps AI exit, trails at the next key level." /> Momentum barriers</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="tcm8" title="8TCM baseline next to EMA 9/20/50. One open trade at a time — neither system interrupts the other. Turns off 413 and momentum-barrier packs." /> 8TCM</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="tcm8_longs" /> 8TCM longs</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="tcm8_shorts" /> 8TCM shorts</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="tcm8_classic_target" title="Take profit at the next key level. Baseline." /> 8TCM classic TP</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="tcm8_runner" title="After the primary key-level target, keep the trade and use Recon trail. Off = flatten at target." /> 8TCM runner</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="tcm8_ai_exit" title="Obsolete for 8TCM entries. Do not trail from bar one. Use 8TCM runner after the primary target." /> 8TCM AI exit</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="short_sniper" /> Sniper shorts</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="rsi_long" /> RSI long</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="chop_long" /> Chop long</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="scout" /> AI scout</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="grow_mode" /> Grow bank</label>
-                <div class="tune-knob" data-strategy-num="min_sep_atr" data-min="0" data-max="2" data-step="0.05">
-                  <label>Min sep ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="min_sep_points" data-min="0" data-max="20" data-step="0.5">
-                  <label>Min sep pts <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="max_entry_ext_atr" data-min="0.1" data-max="3" data-step="0.05">
-                  <label>Max entry ext ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="contracts" data-min="1" data-max="20" data-step="1">
-                  <label>Contracts <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="strategy-select-row">
-                  <label for="strategy-risk">Account risk</label>
-                  <select id="strategy-risk">
-                    <option value="OFF">OFF</option>
-                    <option value="SMALL_250">SMALL_250</option>
-                    <option value="STANDARD">STANDARD</option>
-                  </select>
-                </div>
-                <div class="strategy-select-row">
-                  <label for="strategy-413-mode">413 entry mode</label>
-                  <select id="strategy-413-mode">
-                    <option value="BREAKOUT">BREAKOUT</option>
-                    <option value="PULLBACK">PULLBACK</option>
-                  </select>
-                </div>
-                <div class="tune-knob" data-strategy-num="breakout_413_max_stop" data-min="8" data-max="80" data-step="1">
-                  <label>413 max stop pts <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-section-head">8TCM BASELINE</div>
-                <div class="tune-knob" data-strategy-num="tcm8_ema_period" data-min="2" data-max="20" data-step="1">
-                  <label>EMA period <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_trend_slope_lookback" data-min="2" data-max="20" data-step="1">
-                  <label>Trend slope lookback <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_min_trend_slope_atr" data-min="0.01" data-max="0.50" data-step="0.01">
-                  <label>Min trend slope ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_pullback_max_distance_atr" data-min="0.05" data-max="0.50" data-step="0.01">
-                  <label>Pullback max ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_ema_touch_tolerance_atr" data-min="0.05" data-max="0.50" data-step="0.01">
-                  <label>EMA touch ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_max_ema_penetration_atr" data-min="0.05" data-max="1" data-step="0.01">
-                  <label>Max EMA penetration ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_max_entry_distance_from_ema_atr" data-min="0.10" data-max="1" data-step="0.01">
-                  <label>Max entry dist ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_strong_wick_body_ratio" data-min="1" data-max="4" data-step="0.05">
-                  <label>Strong wick / body <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_pin_bar_wick_body_ratio" data-min="1" data-max="5" data-step="0.05">
-                  <label>Pin bar wick / body <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_min_rejection_body_atr" data-min="0.05" data-max="1" data-step="0.01">
-                  <label>Min rejection body ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_barrier_proximity_block_atr" data-min="0.05" data-max="1" data-step="0.01">
-                  <label>Barrier block ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_swing_strength" data-min="1" data-max="5" data-step="1">
-                  <label>Swing confirm bars <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_consolidation_lookback" data-min="4" data-max="30" data-step="1">
-                  <label>Chop lookback bars <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_consolidation_max_range_atr" data-min="0.25" data-max="3" data-step="0.05">
-                  <label>Chop max range ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_stop_buffer_atr" data-min="0.02" data-max="0.50" data-step="0.01">
-                  <label>Stop buffer ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_minimum_target_r" data-min="0.25" data-max="2" data-step="0.05">
-                  <label>Minimum target R <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tcm8_preferred_target_r" data-min="0.50" data-max="4" data-step="0.05">
-                  <label>Preferred target R <output></output></label>
-                  <input type="range" />
-                </div>
-              </div>
-              <div class="strategy-col">
-                <div class="tune-section-head">EXIT</div>
-                <label class="tune-check"><input type="checkbox" data-strategy="ai_exit_engine" /> AI momentum exit engine</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="momentum_score" /> Momentum score</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="mfe_runner" /> MFE runner floor</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="structure_override" /> Structure-break override</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="momentum_reacceleration" /> Momentum reacceleration</label>
-                <label class="tune-check"><input type="checkbox" data-strategy="grow_mode" /> Grow bank</label>
-                <div class="tune-knob" data-strategy-num="mfe_keep_pct" data-min="50" data-max="95" data-step="1">
-                  <label>Runner keep % <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="tip_trail_arm_usd" data-min="15" data-max="250" data-step="5">
-                  <label>Tip trail arm $ <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="probation_atr" data-min="0.25" data-max="3" data-step="0.05">
-                  <label>Probation ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="confirm_1r_atr" data-min="0.25" data-max="3" data-step="0.05">
-                  <label>+1R confirm ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="catastrophic_atr" data-min="0.4" data-max="4" data-step="0.05">
-                  <label>Catastrophic stop ATR <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="reentry_cooldown" data-min="0" data-max="30" data-step="1">
-                  <label>Reentry cooldown sec <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-knob" data-strategy-num="daily_goal" data-min="0" data-max="2000" data-step="25">
-                  <label>Daily goal $ <output></output></label>
-                  <input type="range" />
-                </div>
-                <div class="tune-note">Changes save to this bot’s LocalAppData settings and apply on the next signal / hold tick. ARM / GROW BANK stay on TRADE.</div>
-              </div>
-            </div>
-          </section>
         </div>
 
         <div class="hud-view" id="view-logs">
@@ -553,7 +351,6 @@
             <label class="tune-check"><input type="checkbox" id="toggle-trending" /> Require TRENDING</label>
             <label class="tune-check"><input type="checkbox" id="toggle-choppy-bias" /> Choppy with bias</label>
             <label class="tune-check"><input type="checkbox" id="toggle-chaotic" /> Chaotic quick bank</label>
-            <label class="tune-check"><input type="checkbox" id="toggle-grow-mode" /> Grow bank ($50 stall clip)</label>
             <label class="tune-check tune-check-exp"><input type="checkbox" id="toggle-experimental" /> Mark II experimental (Phase 1)</label>
             <label class="tune-check"><input type="checkbox" id="toggle-candles" /> Candle alignment</label>
             <label class="tune-check"><input type="checkbox" id="toggle-book-patterns" /> Book patterns only <span class="tune-hint">(auto-clears other gates · RSI override stays)</span></label>

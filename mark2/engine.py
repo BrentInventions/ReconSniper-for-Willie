@@ -9,10 +9,8 @@ from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
-from .account_risk import AccountRiskManager
 from .analytics import EngineStats
-from .config import Mark2Config, load_config, local_app_settings_path, save_config, SETTINGS_PATH
-from .trade_email import TradeMailer
+from .config import Mark2Config, load_config, save_config, SETTINGS_PATH
 from .confidence import ConfidenceEngine
 from .context import MarketContext
 from .events import EventDetector
@@ -50,7 +48,6 @@ from .entry_tuning import (
     reset_to_defaults,
     snapshot as entry_tuning_snapshot,
 )
-from .strategy_hud import apply_strategy, snapshot as strategy_snapshot
 from .experimental import (
     directional_agreement_ok,
     entry_quality_ok,
@@ -63,56 +60,6 @@ from .bias_entry import bias_entry_gates
 from .chaotic_bank import chaotic_entry_ok
 from .chop_scalp import chop_entry_ok
 from .book_patterns import BookPatternDetector, book_pattern_entry_ok
-from .breakout_413 import (
-    Breakout413State,
-    filter_note as filter_note_413,
-    note_fill as note_fill_413,
-    note_stop_exit as note_stop_exit_413,
-    on_completed_bar as on_413_completed_bar,
-    tick_should_fill as tick_413_should_fill,
-)
-from .momentum_barriers import (
-    BarrierBook,
-    REJECT_NEAR_MOMENTUM_BARRIER,
-    barrier_trade_hud,
-    barriers_enabled,
-    barriers_only_mode,
-    evaluate_entry_room,
-    format_entry_log,
-    get_next_momentum_barrier,
-    refresh_structure,
-    sync_trade_barrier,
-    update_session_levels,
-)
-from .tcm8 import (
-    ENTRY_LONG,
-    ENTRY_SHORT,
-    DOLLAR_ARM,
-    RUNNER_ARM,
-    ST_TRADE_COMPLETE,
-    Tcm8Setup,
-    Tcm8Stats,
-    aggregate_timeframe,
-    apply_tcm8_runner_trail,
-    evaluate_tcm8,
-    tcm8_working_target,
-    format_tcm8_log,
-    last_ema,
-    manage_tcm8_hold,
-    overlay_forming_htf,
-    tcm8_enabled,
-    tcm8_only_mode,
-    tcm8_trade_hud,
-    uses_tcm8_hold,
-    barrier_kind_label,
-)
-from .tcm8_status import (
-    format_tcm8_cmd_tables,
-    ledger_record_close,
-    ledger_record_open,
-    publish_from_engine,
-    read_tcm8_ledger,
-)
 from .ai_scout import ScoutView, scout_opportunity
 from .ema_strategy import (
     EmaPullbackSetup,
@@ -137,11 +84,8 @@ from .ema_strategy import (
     intersection_status,
     entry_extension_ok,
     indicator_snapshot,
-    is_ema_compressed,
     manage_ema_hold,
-    more_protective_stop,
     mfe_giveback_floor_pts,
-    mfe_losing_momentum,
     profit_keep_usd,
     grow_mode_active,
     runner_tip_trail_pts,
@@ -157,7 +101,6 @@ from .ema_strategy import (
 from .exhaustion import exhaustion_blocks, read_exhaustion
 from .extension import ExtensionFilter
 from .features import FastFeatures
-from .licensing.manager import apply_to_engine, is_authorized, license_hud
 from .logger import AnalyticsLogger
 from .opportunity import OpportunityEngine
 from .risk import RiskGate
@@ -177,92 +120,6 @@ from .types import (
 
 ROUND_TURN_FEES = 2.48
 LEDGER_MAX = 120
-
-_EMA_CLOSE_COPY = {
-    "WAIT_9_20": "20/50 spread · waiting 9 through 20",
-    "WAIT_9_50": "9/20 armed · waiting 9 through 50",
-    "WAIT_CLOSE": "through on this bar · waiting close",
-    "BULL_WAIT_CLOSE": "bull setup · waiting close",
-    "READY": "intersection ready",
-    "PULLBACK": "extended · waiting pullback (not chasing)",
-    "413_ARMED": "413 long breakout armed",
-    "413_PULLBACK": "413 waiting pullback",
-    "413_LONG": "413 long breakout fill",
-}
-
-_EMA_NO_FIRE_COPY = {
-    "TIGHT": "knot · 20/50 not spread — no fire",
-    "WHITE_ONLY": "9/20 only · not through blue — no fire",
-    "STACK_STALE": "short leftover · already under — skipped",
-    "STALE": "short leftover · already under — skipped",
-    "STALE_BLUE": "short leftover · already under — skipped",
-    "LONG_ONLY": "short would fire · longs only — skipped",
-    "SIDE_OFF": "this side is off — skipped",
-    "DISARMED": "bot disarmed — no trade",
-    "COOLDOWN": "re-entry pause — not firing",
-    "EXTENDED": "too far from 20 — no chase",
-    "MIN_BARS_SINCE_LAST_CROSS": "too soon after last cross — no fire",
-    "LIVE_NOT_SENT": "live order not sent",
-    "NT_REJECT": "NT rejected — no fill",
-    "NT_NO_FILL": "NT never filled — phantom cleared",
-    "BLUE_WARMUP": "50 EMA not ready — no fire",
-    "RED_FALLING": "9 not rising — long skipped",
-    "RED_RISING": "9 still rising — short skipped",
-    "NOT_BEARISH": "not bearish — long skipped",
-    "NOT_BULLISH": "not bullish — short skipped",
-    "STACK_USED": "this stack already used — no fire",
-    "CHOPPY": "choppy — no fire",
-    "CHAOTIC": "chaotic — no fire",
-    "NO_INTERSECT": "no intersection — no fire",
-    "RSI_NOT_DYING": "RSI not dying — fade skipped",
-    "FADE_SHORT_OFF": "fade short off — no fire",
-    "ACCOUNT_TOO_SMALL_FOR_SETUP": "required risk bigger than this account — no fire",
-    "DAILY_LOCKOUT": "daily loss limit — trading locked",
-    "EQUITY_KILL": "equity floor hit — trading locked",
-    "CONNECTION_FAILSAFE": "NT disconnected — no new entries",
-    "CONSECUTIVE_LOSSES": "too many losses in a row — locked",
-    "413_CANCEL": "413 setup cancelled",
-    "REJECT_NEAR_MOMENTUM_BARRIER": "next key level too close — no fire",
-    "BARRIER_ONLY": "momentum barriers only — other entries paused",
-    "TCM8_ONLY": "8TCM only — other entries paused",
-    "REJECT_8TCM_HTF_TREND": "8TCM · no clear structure trend",
-    "REJECT_NO_CLEAR_TREND": "8TCM · no clear structure trend",
-    "REJECT_BEARISH_STRUCTURE_NOT_CONFIRMED": "8TCM · LH/LL not confirmed",
-    "REJECT_BULLISH_STRUCTURE_NOT_CONFIRMED": "8TCM · HH/HL not confirmed",
-    "REJECT_MARKET_RANGING": "8TCM · ranging · no fire",
-    "REJECT_8TCM_RANGE": "8TCM · ranging · no fire",
-    "REJECT_NO_RETRACEMENT": "8TCM · no retracement to EMA8",
-    "REJECT_NO_PULLBACK": "8TCM · no retracement to EMA8",
-    "REJECT_EMA8_NOT_TESTED": "8TCM · EMA8 not tested",
-    "REJECT_EMA8_REJECTION_NOT_CONFIRMED": "8TCM · EMA8 rejection not confirmed",
-    "REJECT_NO_REJECTION": "8TCM · EMA8 rejection not confirmed",
-    "REJECT_CANDLE_WRONG_SIDE_EMA8": "8TCM · close on the wrong side of EMA8",
-    "REJECT_EMA_STRUCTURE_FAILURE": "8TCM · EMA8 not tested",
-    "REJECT_CHASE": "8TCM · entry too far from EMA8",
-    "REJECT_8TCM_CHASE": "8TCM · entry too far from EMA8",
-    "REJECT_NEAR_KEY_LEVEL": "8TCM · next key level too close",
-    "REJECT_INSUFFICIENT_TARGET_R": "8TCM · not enough room to next level",
-    "REJECT_INVALID_STOP": "8TCM · invalid stop",
-    "REJECT_BRIDGE_DISCONNECTED": "NT disconnected — no new entries",
-    "8TCM_LONG": "8TCM long · EMA8 rejection",
-    "8TCM_SHORT": "8TCM short · EMA8 rejection",
-    "8TCM_LONG_EMA8_REJECTION": "8TCM long · EMA8 rejection",
-    "8TCM_SHORT_EMA8_REJECTION": "8TCM short · EMA8 rejection",
-    "8TCM_KEY_LEVEL_TARGET": "8TCM · primary key-level target",
-    "8TCM_RUNNER_ARM": "8TCM · primary target reached · runner on",
-    "8TCM_DOLLAR_ARM": "8TCM · dollar goal · runner on",
-    "8TCM_RUNNER_TRAIL": "8TCM · runner trail",
-    "8TCM_GREEN_BANK": "8TCM · green key-level bank",
-}
-
-
-def _ema_feed_copy(tag: str) -> tuple[str, str] | None:
-    key = str(tag or "").upper()
-    if key in _EMA_CLOSE_COPY:
-        return "CLOSE", _EMA_CLOSE_COPY[key]
-    if key in _EMA_NO_FIRE_COPY:
-        return "NO_FIRE", _EMA_NO_FIRE_COPY[key]
-    return None
 
 
 class Mark2Engine:
@@ -286,12 +143,8 @@ class Mark2Engine:
         self.health = TradeHealthEngine(self.cfg)
         self.risk = RiskGate(self.cfg)
         self.execution = ExecutionEngine(self.cfg, self.risk, sink=sink)
-        self.mail = TradeMailer.load()
         logs = Path(__file__).resolve().parent / "logs"
         self.log = AnalyticsLogger(log_path or (logs / "mark2_decisions.jsonl"))
-        self.acct_risk = AccountRiskManager(self.cfg, writer=self._account_risk_write)
-        self.execution.acct_risk = self.acct_risk
-        apply_to_engine(self)
         self.stats = EngineStats(engine=str(self.cfg.PRODUCT_ENGINE or "ReconSniper"))
         self.closed_trades: deque[dict[str, Any]] = deque(maxlen=LEDGER_MAX)
         self.completed_bars: list[dict] = []
@@ -307,8 +160,6 @@ class Mark2Engine:
         self._last_levels: tuple | None = None
         self._last_nt_stop: float | None = None
         self.account: dict[str, Any] = {}
-        self._live_entry_wall: float = 0.0
-        self._live_filled: bool = False
         # NT realized+unrealized at last HUD session reset (clear_session).
         self._session_pnl_baseline: float | None = None
         self.goal_met = False
@@ -320,18 +171,6 @@ class Mark2Engine:
         self._last_entry_tags: dict[str, Any] = {}
         self._ema_pending_side: Side = Side.NONE
         self._ema_pending_why: str = ""
-        self._413 = Breakout413State()
-        self._barriers = BarrierBook()
-        try:
-            self._barriers.persist_path = local_app_settings_path().parent / "barrier_session.json"
-        except Exception:
-            self._barriers.persist_path = None
-        self._tcm8 = Tcm8Setup()
-        self._tcm8_stats = Tcm8Stats()
-        self._tcm8_last: dict[str, Any] = {}
-        self._bars_1h: list[dict] = []
-        self._bars_4h: list[dict] = []
-        self._tcm8_bars_1m: deque[dict] = deque(maxlen=3000)
         self._ema_pullback: EmaPullbackSetup | None = None
         self._ema_pullback_fill: dict | None = None
         self._ema_exit_armed: bool = False
@@ -342,12 +181,8 @@ class Mark2Engine:
         self._ema_log_bars_since: int = 0
         self._ema_reversal_side: Side = Side.NONE
         self._last_ema_overlay: tuple | None = None
-        self._last_barrier_overlay: tuple | None = None
-        self._last_tcm8_overlay: tuple | None = None
         self._ema_watch: str = ""
         self._ema_watch_logged: str = ""
-        self._ema_feed_bar: str = ""
-        self._ema_feed_seen: set[str] = set()
         self._ema_long_stack_taken: bool = False
         self._ema_short_stack_taken: bool = False
         self._ema_rsi_peak: float = 0.0
@@ -583,17 +418,9 @@ class Mark2Engine:
         return self.execution.mode
 
     def _persist(self) -> None:
-        try:
-            save_config(self.cfg, self._persist_path)
-        except OSError:
-            pass
+        save_config(self.cfg, self._persist_path)
 
     def set_enabled(self, on: bool, *, persist: bool = True) -> bool:
-        if on and not is_authorized(cfg=self.cfg):
-            self.cfg.MARK2_ENABLED = False
-            if persist:
-                self._persist()
-            return False
         self.cfg.MARK2_ENABLED = bool(on)
         # Re-ARM after a goal hit only unlocks if session PnL is under the goal
         # (typically after clear_session). Otherwise the next tick would re-hit.
@@ -616,8 +443,6 @@ class Mark2Engine:
 
     def set_contracts(self, n: int, *, persist: bool = True) -> int:
         cap = max(1, int(self.cfg.MAX_CONTRACTS))
-        if getattr(self, "acct_risk", None) is not None and self.acct_risk.enabled():
-            cap = min(cap, self.acct_risk.max_contracts())
         try:
             qty = int(n)
         except (TypeError, ValueError):
@@ -707,18 +532,6 @@ class Mark2Engine:
         out["experimental"] = snapshot_experimental(self.cfg)
         return out
 
-    def set_strategy(self, payload: dict, *, persist: bool = True) -> dict:
-        data = payload
-        if isinstance(data, str):
-            import json
-            data = json.loads(data)
-        out = apply_strategy(self.cfg, dict(data or {}))
-        if persist:
-            self._persist()
-        self._push_barrier_overlay()
-        self._push_tcm8_overlay()
-        return out
-
     def _note_decision(
         self,
         price: float,
@@ -774,12 +587,11 @@ class Mark2Engine:
 
     def hud_snapshot(self) -> dict[str, Any]:
         try:
-            return _jsonable(self._hud_snapshot())
+            return self._hud_snapshot()
         except Exception as exc:
             return {
                 "product": str(getattr(self.cfg, "PRODUCT_NAME", None) or "RECON SNIPER"),
                 "enabled": bool(getattr(self.cfg, "MARK2_ENABLED", False)),
-                "license": license_hud(cfg=getattr(self, "cfg", None)),
                 "mode": self.mode.value,
                 "connected": bool(self.risk.connected),
                 "state": "ERROR",
@@ -816,32 +628,12 @@ class Mark2Engine:
             }
         _hunt, _hunt_bank = self._goal_bank_for_entry()
         _ema_hud = self._ema_hud_stack()
-        _bar_hud = self._barrier_hud()
-        _bar_on = bool(_bar_hud.get("exclusive"))
-        _tcm8_hud = self._tcm8_hud()
-        _tcm8_on = bool(
-            _tcm8_hud.get("exclusive")
-            or (self.paper is not None and uses_tcm8_hold(self.paper))
-        )
         return {
             "product": str(self.cfg.PRODUCT_NAME or "RECON SNIPER"),
-            "kickerLong": (
-                str(_tcm8_hud.get("kickerLong") or "8TCM LONG")
-                if _tcm8_on
-                else str(_bar_hud.get("kickerLong") or "BARRIER LONG")
-                if _bar_on
-                else str(self.cfg.KICKER_LONG or "RECON LONG")
-            ),
-            "kickerShort": (
-                str(_tcm8_hud.get("kickerShort") or "8TCM SHORT")
-                if _tcm8_on
-                else str(_bar_hud.get("kickerShort") or "BARRIER SHORT")
-                if _bar_on
-                else str(self.cfg.KICKER_SHORT or "RECON SHORT")
-            ),
+            "kickerLong": str(self.cfg.KICKER_LONG or "RECON LONG"),
+            "kickerShort": str(self.cfg.KICKER_SHORT or "RECON SHORT"),
             "bridgeName": str(self.cfg.BRIDGE_NAME or "ReconSniperBridge"),
             "enabled": bool(self.cfg.MARK2_ENABLED),
-            "license": license_hud(cfg=self.cfg),
             "mode": self.mode.value,
             "connected": bool(self.risk.connected),
             "kill": bool(self.risk.kill),
@@ -866,7 +658,6 @@ class Mark2Engine:
                 self.cfg,
                 float(self.account.get("equity") or self.account.get("cash") or 0),
             ),
-            "growModeEnabled": bool(getattr(self.cfg, "ENABLE_GROW_MODE", False)),
             "ema9": _ema_hud[0],
             "ema20": _ema_hud[1],
             "ema50": _ema_hud[2],
@@ -970,11 +761,7 @@ class Mark2Engine:
                 "chaoticBank": bool(paper.chaotic_bank),
                 "manualEntry": bool(paper.manual_entry),
                 "state": str(getattr(paper, "ema_trade_state", "") or ""),
-                "tag": str(
-                    getattr(paper, "ema_entry_tag", "")
-                    or getattr(paper, "event_type", "")
-                    or ""
-                ),
+                "tag": str(getattr(paper, "ema_entry_tag", "") or ""),
                 "atrAtEntry": round(float(getattr(paper, "atr_at_entry", 0) or 0), 4),
                 "peakPnl": round(
                     float(paper.mfe) * float(self.cfg.POINT_VALUE) * int(paper.qty),
@@ -997,7 +784,7 @@ class Mark2Engine:
                 "inTrade": paper is not None,
                 "fromNt": from_nt,
             },
-            "log": list(self.recent_decisions)[-48:],
+            "log": list(self.recent_decisions)[-36:],
             "sessionPnl": session_pnl,
             "account": str(self.account.get("name") or ""),
             "accountSynced": bool(self.account.get("synced")),
@@ -1009,19 +796,11 @@ class Mark2Engine:
             "realized": float(self.account.get("realized") or 0),
             "instrument": str(self.account.get("instrument") or ""),
             "entryTuning": entry_tuning_snapshot(self.cfg),
-            "strategy": strategy_snapshot(self.cfg),
-            "barriers": _bar_hud,
-            "tcm8": _tcm8_hud,
             "exhaustion": self._exhaustion_hud(scores),
             "bookFlash": self._book_flash,
             "bookHits": (self._book_flash or {}).get("hits") if self._book_flash else [],
             "deepHold": bool(getattr(self.cfg, "ENABLE_DEEP_HOLD", False)),
             "deepHoldArm": float(getattr(self.cfg, "DEEP_HOLD_ARM_USD", 300.0) or 300.0),
-            "accountRisk": self.acct_risk.hud(
-                equity=float(self.account.get("equity") or 0),
-                daily_pnl=session_pnl,
-                contracts=int(self.cfg.contracts()),
-            ),
         }
 
     def _scan_book_flash(self, bars: list[dict], *, ts: float) -> None:
@@ -1223,121 +1002,6 @@ class Mark2Engine:
             "synced": synced,
             "position": int(pos or 0),
         }
-        pos = int(self.account.get("position") or 0)
-        if self.paper is not None:
-            if (self.paper.side == Side.LONG and pos > 0) or (self.paper.side == Side.SHORT and pos < 0):
-                self._live_filled = True
-        self._sync_account_risk(ts=None)
-        self._maybe_abort_unfilled_live()
-
-    def abort_unfilled_live(self, why: str = "NT_REJECT") -> bool:
-        """NT rejected or never filled. Drop the phantom paper so we can send again."""
-        if self.paper is None:
-            return False
-        if self._live_filled:
-            self._close_live_from_nt(why="NT_FLAT")
-            return False
-        side = getattr(self.paper, "side", Side.NONE)
-        side_txt = side.value if isinstance(side, Side) else str(side or "LONG")
-        tag = "NT_NO_FILL" if str(why).upper() in ("NT_NO_FILL",) else "NT_REJECT"
-        print(
-            f"LIVE FILL FAILED  {why}  no NT position — bot is free to send the next order",
-            flush=True,
-        )
-        self._ema_feed(side=side_txt, tag=tag, extra=str(why), tick_bucket=True)
-        try:
-            self.log.write("MARK2_LIVE_ABORT", reason=str(why or "NT_REJECT"))
-        except OSError:
-            pass
-        try:
-            pos = int(self.account.get("position") or 0)
-            if self.execution.sink is not None and pos != 0:
-                self.execution.sink.send_flat(str(why or "NT_REJECT"))
-        except Exception:
-            pass
-        self.risk.open_side = Side.NONE
-        self.risk.pending = False
-        self.paper = None
-        self._live_entry_wall = 0.0
-        self._live_filled = False
-        self._last_nt_stop = None
-        self._ema_exit_armed = False
-        self._ema_clear_setup()
-        self._ema_reset_long_stack()
-        self.sm.state = EngineState.WATCHING
-        self._push_levels(clear=True)
-        return True
-
-    def note_nt_fill(self, msg: dict[str, Any]) -> None:
-        """Entry fills mark the live ticket real. Flatten fills book PnL."""
-        if self.paper is None:
-            return
-        name = str(msg.get("order_name") or msg.get("order_action") or "").lower()
-        try:
-            px = float(msg.get("price") or 0)
-        except (TypeError, ValueError):
-            px = 0.0
-        pos = None
-        if "position" in msg and msg.get("position") not in (None, ""):
-            try:
-                pos = int(float(msg.get("position") or 0))
-            except (TypeError, ValueError):
-                pos = None
-        flat_name = any(
-            key in name
-            for key in ("flat", "stop loss", "stoploss", "target", "cover", "profit target")
-        )
-        if pos is not None and pos != 0:
-            if (self.paper.side == Side.LONG and pos > 0) or (self.paper.side == Side.SHORT and pos < 0):
-                self._live_filled = True
-            return
-        if pos == 0 or flat_name:
-            if self._live_filled or flat_name:
-                why = "STOP" if "stop" in name else ("TARGET" if "target" in name else "NT_FLAT")
-                self._close_live_from_nt(price=px, why=why)
-            return
-        if not flat_name:
-            self._live_filled = True
-
-    def _close_live_from_nt(self, *, price: float = 0.0, why: str = "NT_FLAT") -> None:
-        if self.paper is None:
-            return
-        px = float(price or 0)
-        if px <= 0 and self.last_snap is not None:
-            px = float(self.last_snap.price or self.paper.entry)
-        if px <= 0:
-            px = float(self.paper.entry)
-        ts = float(self.last_snap.ts) if self.last_snap is not None else time.time()
-        tick = Tick(ts=ts, price=px)
-        snap = self.last_snap
-        if snap is None:
-            snap = MarketSnapshot(
-                ts=ts,
-                price=px,
-                completed_bars=list(self.completed_bars),
-                forming_bar=self.forming_bar,
-            )
-        scores = self.last_scores or ScoreBundle()
-        print(f"NT FLAT LOGGED  {why}  {self.paper.side.value} @ {px:.2f}", flush=True)
-        self._close_position(tick, snap, scores, why)
-
-    def _maybe_abort_unfilled_live(self) -> None:
-        if self.paper is None:
-            return
-        if self.mode != RunMode.LIVE:
-            return
-        pos = int(self.account.get("position") or 0)
-        if pos != 0:
-            if (self.paper.side == Side.LONG and pos > 0) or (self.paper.side == Side.SHORT and pos < 0):
-                self._live_filled = True
-            return
-        if self._live_filled:
-            self._close_live_from_nt(why="NT_FLAT")
-            return
-        started = float(self._live_entry_wall or 0)
-        if started <= 0 or (time.time() - started) < 8.0:
-            return
-        self.abort_unfilled_live("NT_NO_FILL")
 
     def _nt_total_pnl(self) -> float:
         acct = self.account
@@ -1363,34 +1027,11 @@ class Mark2Engine:
         self.completed_bars.append(b)
         if len(self.completed_bars) > 400:
             self.completed_bars = self.completed_bars[-400:]
-        self._tcm8_bars_1m.append(b)
-        self._refresh_barriers()
         ts = _bar_ts(b)
         self.context.on_bar_close(self.completed_bars, ts)
         if self.forming_bar and str(self.forming_bar.get("time")) == b["time"]:
             self.forming_bar = None
-        if not seed:
-            self._tcm8_on_completed_bar()
         self._ema_on_completed_bar(allow_entry=not seed)
-
-    def on_htf_bar(self, bar: dict, *, minutes: int, seed: bool = False) -> None:
-        """Native 1H / 4H bars from ReconSniperBridge. Preferred over 1m aggregation."""
-        b = {
-            "time": str(bar.get("time") or ""),
-            "open": float(bar.get("open") or 0),
-            "high": float(bar.get("high") or 0),
-            "low": float(bar.get("low") or 0),
-            "close": float(bar.get("close") or 0),
-            "volume": float(bar.get("volume") or bar.get("vol") or 0),
-        }
-        if int(minutes) >= 240:
-            store = self._bars_4h
-        else:
-            store = self._bars_1h
-        store.append(b)
-        if len(store) > 400:
-            del store[:-400]
-        _ = seed
 
     def on_tick(self, tick: Tick) -> Optional[dict]:
         self._fold_forming(tick)
@@ -1413,33 +1054,16 @@ class Mark2Engine:
         if self.paper is not None:
             scores = self.extension.update(snap, scores, event=self.events.active)
             self.last_snap, self.last_scores = snap, scores
-            halted = self._enforce_account_risk(tick, snap, scores)
-            if halted is not None:
-                return halted
-            if uses_tcm8_hold(self.paper):
-                out = self._manage_tcm8(tick, snap, scores)
-            elif bool(getattr(self.paper, "ema_strategy", False)):
+            if self._ema_mode() and bool(getattr(self.paper, "ema_strategy", False)):
                 out = self._manage_ema(tick, snap, scores)
             else:
                 out = self._manage(tick, snap, scores)
             self._maybe_complete_goal(tick=tick)
             return out
 
-        if tcm8_only_mode(self.cfg):
-            scores = self.extension.update(snap, scores, event=None)
-            self.last_snap, self.last_scores = snap, scores
-            halted = self._enforce_account_risk(tick, snap, scores)
-            if halted is not None:
-                return halted
-            self.sm.state = EngineState.WATCHING
-            return {"state": self.sm.state.value, "decision": "WAIT", "reject": "TCM8_ONLY"}
-
         if self._ema_mode():
             scores = self.extension.update(snap, scores, event=None)
             self.last_snap, self.last_scores = snap, scores
-            halted = self._enforce_account_risk(tick, snap, scores)
-            if halted is not None:
-                return halted
             return self._ema_flat_tick(tick, snap, scores)
 
         if not bool(getattr(self.cfg, "ALLOW_LEGACY_ENTRIES", True)):
@@ -1451,9 +1075,6 @@ class Mark2Engine:
         event, ev_status = self.events.detect(snap, scores)
         scores = self.extension.update(snap, scores, event=event)
         self.last_snap, self.last_scores = snap, scores
-        halted = self._enforce_account_risk(tick, snap, scores)
-        if halted is not None:
-            return halted
         if self._maybe_complete_goal(tick=tick):
             return {"state": self.sm.state.value, "decision": "GOAL_HIT"}
         if not self.cfg.MARK2_ENABLED:
@@ -1735,7 +1356,7 @@ class Mark2Engine:
         scores: ScoreBundle,
         event: EventRecord,
     ) -> str:
-        if self._trade_slot_busy():
+        if self.paper is not None or self.risk.open_side != Side.NONE:
             return "IN_TRADE"
         if self.goal_met:
             return "GOAL_HIT"
@@ -1771,10 +1392,6 @@ class Mark2Engine:
                 target_pts = chop_target_points(self.cfg, int(self.cfg.contracts()))
             elif bool(getattr(self.cfg, "EMA_CLASSIC_EXIT", False)):
                 tip_pts = float(getattr(self.cfg, "RUNNER_TRAIL_POINTS", 5.5) or 5.5)
-            if trig.startswith("413") and float(getattr(self._413, "stop", 0) or 0) > 0:
-                stop = float(self._413.stop)
-                target_pts = max(0.0, float(self._413.target) - tick.price)
-                scalp = False
         else:
             stop = initial_stop(
                 tick.price,
@@ -1788,54 +1405,21 @@ class Mark2Engine:
             side=event.direction,
             price=tick.price,
             stop=stop,
-            quantity=int(self.acct_risk.clamp_qty(self.cfg.contracts())),
+            quantity=int(self.cfg.contracts()),
             reason=f"RECON {event.event_type.value} {event.direction.value}",
             ts=tick.ts,
         )
         result = self.execution.enter(intent)
         if result not in ("OBSERVE_EXECUTE", "PAPER_EXECUTE", "LIVE_EXECUTE"):
-            tag = str(result or "REJECT_RISK")
-            if tag in (
-                "ACCOUNT_TOO_SMALL_FOR_SETUP",
-                "DAILY_LOCKOUT",
-                "EQUITY_KILL",
-                "CONNECTION_FAILSAFE",
-                "CONSECUTIVE_LOSSES",
-                "STALE_DATA",
-                "DUPLICATE",
-            ):
-                self._ema_feed(side=event.direction.value, tag=tag, extra="DID NOT FIRE", tick_bucket=True)
             if (
                 ema_x
-                and bool(getattr(self.cfg, "AI_SCOUT_PAPER_FALLBACK", False))
+                and bool(getattr(self.cfg, "AI_SCOUT_PAPER_FALLBACK", True))
                 and not self.goal_met
                 and not bool(self.risk.kill)
-                and tag not in (
-                    "ACCOUNT_TOO_SMALL_FOR_SETUP",
-                    "DAILY_LOCKOUT",
-                    "EQUITY_KILL",
-                    "CONNECTION_FAILSAFE",
-                    "CONSECUTIVE_LOSSES",
-                    "STALE_DATA",
-                    "DUPLICATE",
-                )
             ):
                 print(f"EMA ENTRY FALLBACK PAPER  was:{result}", flush=True)
                 self.risk.note_open(event.direction)
                 result = "PAPER_EXECUTE"
-            else:
-                print(
-                    f"LIVE ORDER NOT SENT  {result}  "
-                    f"nt={'ON' if self.risk.connected else 'OFF'}  "
-                    f"mode={self.cfg.MODE}",
-                    flush=True,
-                )
-                self._ema_feed(
-                    side=event.direction.value,
-                    tag="LIVE_NOT_SENT",
-                    extra=str(result),
-                    tick_bucket=True,
-                )
         if result in ("OBSERVE_EXECUTE", "PAPER_EXECUTE", "LIVE_EXECUTE"):
             self.events.mark_consumed(taken=True)
             entry_conf = (
@@ -1915,24 +1499,14 @@ class Mark2Engine:
                 tip_target_pts=target_pts,
                 ema_entry_tag=trig,
             )
-            if trig.startswith("413"):
-                self.paper.stop = float(self._413.stop)
-                self.paper.hard_stop = float(self._413.stop)
-                self.paper.target = float(self._413.target)
-                self.paper.ema_strategy = True
-                note_fill_413(self._413)
             if self._ema_mode() and event.event_type == EventType.EMA_CROSS:
-                if event.direction == Side.LONG and not str(trig).startswith("413"):
+                if event.direction == Side.LONG:
                     self._ema_long_stack_taken = True
                 elif event.direction == Side.SHORT and trig == "EMA_FADE_SHORT":
                     self._ema_short_stack_taken = True
                     self._ema_fade_armed = False
-            self._stamp_tcm8_hold()
             self.sm.enter_management()
             self.last_reject = RejectReason.NONE
-            if result == "LIVE_EXECUTE":
-                self._live_entry_wall = time.time()
-                self._live_filled = False
             self._push_levels()
             trig = self._last_entry_tags.get("trigger") or ""
             self.log.write(
@@ -1949,7 +1523,6 @@ class Mark2Engine:
                 deepHold=deep,
                 armUsd=arm_usd,
             )
-            self._notify_trade_entry(tick)
             if ema_x and self.paper is not None:
                 self._ema_entry_bar_i = max(0, len(self.completed_bars) - 1)
                 gap = abs(self.paper.entry - float(self.paper.hard_stop or self.paper.stop))
@@ -1960,13 +1533,6 @@ class Mark2Engine:
                     f"StopDistance:{gap:.2f}  StopPrice:{self.paper.stop}",
                     flush=True,
                 )
-                if getattr(self, "acct_risk", None) is not None:
-                    usd = gap * float(self.cfg.POINT_VALUE) * int(self.paper.qty)
-                    self.acct_risk.log(
-                        f"Protective stop acknowledged  {self.paper.stop:.2f}  planned ${usd:.2f}",
-                        stop=round(float(self.paper.stop), 2),
-                        riskUsd=round(usd, 2),
-                    )
                 self._ema_write(
                     "CATASTROPHIC_STOP_SET",
                     side=self.paper.side.value,
@@ -2112,123 +1678,33 @@ class Mark2Engine:
         self._last_log_key = key
         return True
 
-    def _trade_mail_symbol(self) -> str:
-        return str(getattr(self.cfg, "IMPULSE_PRO_SYMBOL", "") or "").strip() or "MNQ"
-
-    def _notify_trade_entry(self, tick: Tick) -> None:
-        paper = self.paper
-        if paper is None:
-            return
-        mail = getattr(self, "mail", None)
-        if mail is None:
-            return
-        mail.notify_entry(
-            side=paper.side.value,
-            price=float(paper.entry),
-            stop=float(paper.stop),
-            qty=int(paper.qty),
-            tag=str(getattr(paper, "ema_entry_tag", "") or ""),
-            mode=str(getattr(self.cfg, "MODE", "") or ""),
-            symbol=self._trade_mail_symbol(),
-            ts=float(tick.ts),
-        )
-
-    def _notify_trade_exit(self, tick: Tick, trade, *, pts: float, pnl: float, why: str) -> None:
-        mail = getattr(self, "mail", None)
-        if mail is None:
-            return
-        mail.notify_exit(
-            side=trade.side.value,
-            entry=float(trade.entry),
-            exit_px=float(tick.price),
-            qty=int(trade.qty),
-            pts=float(pts),
-            pnl=float(pnl),
-            reason=str(why or ""),
-            mfe=float(getattr(trade, "mfe", 0) or 0),
-            mae=float(getattr(trade, "mae", 0) or 0),
-            hold_sec=float(tick.ts) - float(getattr(trade, "entry_ts", 0) or 0),
-            tag=str(getattr(trade, "ema_entry_tag", "") or ""),
-            mode=str(getattr(self.cfg, "MODE", "") or ""),
-            symbol=self._trade_mail_symbol(),
-            ts=float(tick.ts),
-        )
-
     def _close_position(
         self, tick: Tick, snap: MarketSnapshot, scores: ScoreBundle, why: str
     ) -> None:
         t = self.paper
         assert t is not None
-        tag = str(getattr(t, "ema_entry_tag", "") or "")
-        if tag.startswith("413"):
-            stop_like = str(why or "").upper()
-            if "TARGET" not in stop_like and any(
-                x in stop_like for x in ("HARD_STOP", "413_BE", "413_TRAIL", "STOP")
-            ):
-                note_stop_exit_413(self._413)
         pts = (tick.price - t.entry) if t.side == Side.LONG else (t.entry - tick.price)
         pnl = pts * self.cfg.POINT_VALUE * t.qty - t.fees
         self.execution.flatten(why, ts=tick.ts)
         self.risk.note_fill_pnl(pnl)
-        if getattr(self, "acct_risk", None) is not None:
-            self.acct_risk.note_exit(pnl)
-        if bool(getattr(t, "tcm8", False)):
-            risk = abs(float(t.entry) - float(getattr(t, "hard_stop", 0) or t.stop))
-            r_mult = (pts / risk) if risk > 1e-9 else 0.0
-            self._tcm8_stats.record(
-                side=t.side.value,
-                pnl=pnl,
-                r_mult=r_mult,
-                mfe=float(t.mfe),
-                mae=float(t.mae),
-                grade=str(getattr(t, "tcm8_grade", "") or ""),
-                rejection=str(getattr(t, "tcm8_rejection", "") or ""),
-                hour=int(getattr(snap, "hour_et", -1) or -1),
-                target_r=float(getattr(t, "tcm8_target_r", 0) or 0),
-            )
-            ledger_record_close(
-                {
-                    "side": t.side.value,
-                    "qty": int(t.qty),
-                    "entry": float(t.entry),
-                    "exit": float(tick.price),
-                    "stop": float(getattr(t, "stop", 0) or 0),
-                    "hard": float(getattr(t, "hard_stop", 0) or t.stop),
-                    "target": float(getattr(t, "target", 0) or 0),
-                    "pts": round(float(pts), 2),
-                    "pnl": round(float(pnl), 2),
-                    "fees": float(t.fees),
-                    "mfe": float(t.mfe),
-                    "mae": float(t.mae),
-                    "r_mult": round(float(r_mult), 3),
-                    "reason": str(why),
-                    "hold_sec": max(0.0, float(tick.ts) - float(t.entry_ts or 0)),
-                    "clock_ts": time.time(),
-                    "ts": float(tick.ts),
-                    "point_value": float(getattr(self.cfg, "POINT_VALUE", 2.0) or 2.0),
-                    "grade": str(getattr(t, "tcm8_grade", "") or ""),
-                }
-            )
-            print(format_tcm8_cmd_tables(read_tcm8_ledger()), flush=True)
-        else:
-            self.stats.record(
-                side=t.side.value,
-                pnl=pnl,
-                points=pts,
-                fees=t.fees,
-                mfe=t.mfe,
-                mae=t.mae,
-                hold_sec=tick.ts - t.entry_ts,
-                scratch=str(why).startswith("FAILED_EVENT"),
-                hour=snap.hour_et,
-                event_type=t.event_type,
-                confidence=(
-                    scores.long_confidence if t.side == Side.LONG else scores.short_confidence
-                ),
-                opportunity=(
-                    scores.long_opportunity if t.side == Side.LONG else scores.short_opportunity
-                ),
-            )
+        self.stats.record(
+            side=t.side.value,
+            pnl=pnl,
+            points=pts,
+            fees=t.fees,
+            mfe=t.mfe,
+            mae=t.mae,
+            hold_sec=tick.ts - t.entry_ts,
+            scratch=str(why).startswith("FAILED_EVENT"),
+            hour=snap.hour_et,
+            event_type=t.event_type,
+            confidence=(
+                scores.long_confidence if t.side == Side.LONG else scores.short_confidence
+            ),
+            opportunity=(
+                scores.long_opportunity if t.side == Side.LONG else scores.short_opportunity
+            ),
+        )
         self.closed_trades.appendleft(
             _closed_trade_row(
                 side=t.side.value,
@@ -2257,25 +1733,15 @@ class Mark2Engine:
             direction=t.side.value,
             qty=int(t.qty),
             points=pts,
-            strategy="8TCM" if bool(getattr(t, "tcm8", False)) else "",
         )
-        self._notify_trade_exit(tick, t, pts=pts, pnl=pnl, why=why)
         self._log_trade_telemetry(t, tick, snap, scores, pts=pts, pnl=pnl, why=why)
         # Free the consumed impulse so the next tick can arm a fresh event.
         self.events.release_after_trade(tick.ts, int(getattr(t, "event_id", 0) or 0))
         self.paper = None
         self._last_nt_stop = None
-        self._live_entry_wall = 0.0
-        self._live_filled = False
         self._ema_exit_armed = False
         self._ema_clear_setup()
         self._last_exit_wall = time.time()
-        if bool(getattr(t, "tcm8", False)):
-            publish_from_engine(
-                self,
-                extra={"state": ST_TRADE_COMPLETE, "accept": False, "exit_reason": why},
-                force=True,
-            )
         if bool(getattr(t, "ema_strategy", False)):
             cd = float(getattr(self.cfg, "EMA_REENTRY_COOLDOWN_SEC", 5.0) or 0.0)
         elif str(why).startswith("FAILED_EVENT"):
@@ -2296,14 +1762,11 @@ class Mark2Engine:
     def clear_session(self) -> dict[str, Any]:
         """Zero live session PnL / W-L / closed-trade ledger. Open trade stays."""
         self.stats.clear_session()
-        self._tcm8_stats.clear()
         self.closed_trades.clear()
         self.risk.daily_pnl = 0.0
         self.goal_met = False
         self.risk.goal_met = False
         self._goal_started_ts = None
-        if getattr(self, "acct_risk", None) is not None:
-            self.acct_risk.reset_session(why="CLEAR_SESSION")
         if self.account.get("pnl_from_nt"):
             self._session_pnl_baseline = self._nt_total_pnl()
         else:
@@ -2311,13 +1774,9 @@ class Mark2Engine:
         return self.stats.summary()
 
     def manual_order(self, side: str) -> dict[str, Any]:
-        """HUD operator BUY/SHORT — works while disarmed; blocked if already in a trade.
-
-        Same hold as leftover/sniper: manage_ema_hold / AI exit. No profit-target
-        line or limit — the green bank-lock used to be drawn as a fake target.
-        """
-        if not is_authorized(cfg=self.cfg):
-            return {"ok": False, "error": "LICENSE_REQUIRED"}
+        """HUD operator BUY/SELL — works while disarmed; blocked if already in a trade."""
+        if self._ema_mode() or not bool(getattr(self.cfg, "ALLOW_LEGACY_ENTRIES", True)):
+            return {"ok": False, "error": "EMA_ONLY"}
         raw = str(side or "").upper()
         if raw in ("BUY", "LONG"):
             direction = Side.LONG
@@ -2332,25 +1791,16 @@ class Mark2Engine:
         snap = self.last_snap
         if snap is None or float(snap.price) <= 0:
             return {"ok": False, "error": "NO_PRICE"}
-        use_ema_hold = (
-            self._ema_mode()
-            or bool(getattr(self.cfg, "ENABLE_AI_EXIT_ENGINE", False))
-            or not bool(getattr(self.cfg, "ALLOW_LEGACY_ENTRIES", True))
-        )
         scores = self.last_scores or ScoreBundle()
         tick = Tick(ts=float(snap.ts), price=float(snap.price))
+        atr = max(snap.atr, self.cfg.TICK_SIZE)
         hunt, hunt_bank = self._goal_bank_for_entry(ts=tick.ts)
         arm_usd = (
             float(hunt_bank)
             if hunt
             else float(getattr(self.cfg, "TRAIL_ARM_USD", 15.0) or 15.0)
         )
-        if use_ema_hold:
-            atr = self._ema_atr()
-            stop = ema_atr_stop(tick.price, direction, self._ema_stop_atr(), self.cfg)
-        else:
-            atr = max(snap.atr, self.cfg.TICK_SIZE)
-            stop = initial_stop(tick.price, direction, atr, self.cfg)
+        stop = initial_stop(tick.price, direction, atr, self.cfg)
         qty = int(self.cfg.contracts())
         intent = Intent(
             side=direction,
@@ -2359,7 +1809,7 @@ class Mark2Engine:
             quantity=qty,
             reason=f"HUD_MANUAL_{direction.value}",
             ts=tick.ts,
-            attach_stop=bool(use_ema_hold),
+            attach_stop=False,
         )
         result = self.execution.manual_enter(intent)
         if result not in ("OBSERVE_EXECUTE", "PAPER_EXECUTE", "LIVE_EXECUTE"):
@@ -2383,7 +1833,6 @@ class Mark2Engine:
                 }
             )
             return {"ok": False, "error": result}
-        qty = int(intent.quantity)
         entry_conf = (
             scores.long_confidence
             if direction == Side.LONG
@@ -2403,8 +1852,14 @@ class Mark2Engine:
             entry=tick.price,
             entry_ts=tick.ts,
             stop=stop,
-            # AI / EMA hold owns the exit. Do not publish a green target line.
-            target=0.0,
+            target=initial_target(
+                tick.price,
+                direction,
+                atr,
+                self.cfg,
+                goal_hunt=True,
+                bank_dollars_locked=arm_usd,
+            ),
             peak=tick.price,
             trough=tick.price,
             qty=qty,
@@ -2417,57 +1872,13 @@ class Mark2Engine:
             goal_hunt=True,
             bank_dollars_locked=arm_usd,
             hard_stop=float(stop),
-            ema_strategy=bool(use_ema_hold),
-            ema_trade_state="PROBATION" if use_ema_hold else "WAITING",
-            atr_at_entry=float(atr) if use_ema_hold else 0.0,
-            ema_entry_tag="HUD_MANUAL",
         )
-        if result == "LIVE_EXECUTE":
-            self._live_entry_wall = time.time()
-            self._live_filled = False
-        if use_ema_hold:
-            self._ema_entry_bar_i = max(0, len(self.completed_bars) - 1)
-            gap = abs(self.paper.entry - float(self.paper.hard_stop or self.paper.stop))
-            print("TRADE STATE: PROBATION", flush=True)
-            print(
-                f"CATASTROPHIC STOP SET  Side:{self.paper.side.value}  "
-                f"EntryPrice:{self.paper.entry}  ATRAtEntry:{atr:.4f}  "
-                f"StopDistance:{gap:.2f}  StopPrice:{self.paper.stop}",
-                flush=True,
-            )
-            self._ema_write(
-                "CATASTROPHIC_STOP_SET",
-                side=self.paper.side.value,
-                action="STOP_SET",
-                price=self.paper.entry,
-                timestamp=tick.ts,
-                trade=self.paper,
-                trade_state="PROBATION",
-                extra={
-                    "message": "CATASTROPHIC STOP SET",
-                    "entryPrice": self.paper.entry,
-                    "atrAtEntry": round(atr, 4),
-                    "stopDistance": round(gap, 4),
-                    "stopPrice": self.paper.stop,
-                    "manual": True,
-                },
-            )
-            self._ema_write(
-                "EMA_TRADE_STATE",
-                side=self.paper.side.value,
-                action="STATE",
-                price=self.paper.entry,
-                timestamp=tick.ts,
-                trade=self.paper,
-                trade_state="PROBATION",
-                extra={"message": "TRADE STATE: PROBATION", "manual": True},
-            )
-        # Disarm auto so leftover/sniper cannot stack on top of the discretionary trade.
+        # Manual = operator owns the book. Disarm auto so it cannot re-enter
+        # after a stop/flat and reverse or stack on top of the discretionary trade.
         self.set_enabled(False, persist=True)
         self.sm.enter_management()
         self.last_reject = RejectReason.NONE
         self._push_levels()
-        self._notify_trade_entry(tick)
         self.log.write(
             f"MARK2_{result}",
             manual=True,
@@ -2475,7 +1886,6 @@ class Mark2Engine:
             direction=direction.value,
             stop=stop,
             target=self.paper.target,
-            emaHold=bool(use_ema_hold),
         )
         self.recent_decisions.append(
             {
@@ -2533,61 +1943,6 @@ class Mark2Engine:
         self.sm.on_ready()
         self.last_reject = RejectReason.NONE
 
-    def _account_risk_write(self, message: str, **extra: Any) -> None:
-        try:
-            self.log.write("MARK2_ACCOUNT_RISK", message=str(message), **extra)
-        except OSError:
-            pass
-
-    def _sync_account_risk(self, ts: float | None) -> None:
-        acct = getattr(self, "acct_risk", None)
-        if acct is None:
-            return
-        now = float(ts or 0)
-        age = 0.0
-        if now > 0 and self.last_snap is not None:
-            age = max(0.0, now - float(self.last_snap.ts or now))
-        acct.sync(
-            connected=bool(self.risk.connected),
-            in_trade=self.paper is not None or self.risk.open_side != Side.NONE,
-            daily_pnl=self._bot_session_pnl(),
-            equity=float(self.account.get("equity") or 0),
-            equity_synced=bool(self.account.get("synced")),
-            last_tick_age_sec=age,
-        )
-        if now:
-            acct.maybe_roll_session(now)
-
-    def _enforce_account_risk(self, tick: Tick, snap, scores) -> dict | None:
-        acct = getattr(self, "acct_risk", None)
-        if acct is None:
-            return None
-        self._sync_account_risk(tick.ts)
-        dec = acct.evaluate_open(
-            daily_pnl=self._bot_session_pnl(),
-            equity=float(self.account.get("equity") or 0),
-            equity_synced=bool(self.account.get("synced")),
-            in_trade=self.paper is not None,
-            connected=bool(self.risk.connected),
-            ts=tick.ts,
-        )
-        if not dec.flatten or self.paper is None:
-            return None
-        self._note_decision(
-            tick.price,
-            self.sm.state.value,
-            self.paper.side,
-            "EXIT",
-            RejectReason.REJECT_RISK,
-            self.events.active,
-            scores,
-            exit_reason=dec.reason,
-        )
-        self._ema_feed(side=self.paper.side.value, tag=str(dec.reason), extra="FLATTEN", tick_bucket=True)
-        self._close_position(tick, snap, scores, dec.reason)
-        self._last_manage_state = ""
-        return {"state": self.sm.state.value, "decision": "EXIT", "reject": dec.reason}
-
     def _pnl_log_rows(
         self, paper: Optional[PaperTrade], snap: Optional[MarketSnapshot]
     ) -> list[dict[str, Any]]:
@@ -2622,47 +1977,6 @@ class Mark2Engine:
 
     def _ema_mode(self) -> bool:
         return bool(getattr(self.cfg, "ENABLE_EMA_STRATEGY", False))
-
-    def _trade_slot_busy(self) -> bool:
-        """One live trade owns the slot until it is fully flat."""
-        if self.paper is not None:
-            return True
-        return self.risk.open_side != Side.NONE
-
-    def _stamp_tcm8_hold(self) -> None:
-        """EMA 9/20/50 fills inherit 8TCM key-level / runner / purple trail."""
-        t = self.paper
-        if t is None or bool(getattr(t, "tcm8", False)):
-            return
-        if not tcm8_enabled(self.cfg):
-            return
-        if bool(getattr(t, "manual_entry", False)):
-            return
-        if str(getattr(t, "ema_entry_tag", "") or "").startswith("413"):
-            return
-        if not bool(getattr(t, "ema_strategy", False)):
-            return
-        t.tcm8_hold = True
-        atr_v = self._ema_atr()
-        zone = get_next_momentum_barrier(
-            t.side, float(t.entry), self._barriers, atr_v, self.cfg
-        )
-        if zone.found and float(zone.price) > 0:
-            t.target = float(zone.price)
-            t.tcm8_barrier_type = barrier_kind_label(zone.kind)
-            risk = abs(float(t.entry) - float(getattr(t, "hard_stop", 0) or t.stop))
-            if t.side == Side.LONG:
-                reward = float(zone.price) - float(t.entry)
-            else:
-                reward = float(t.entry) - float(zone.price)
-            if risk > 1e-9 and reward > 0:
-                t.tcm8_target_r = reward / risk
-        print(
-            f"EMA 8TCM HOLD  entry:{t.entry} hard:{getattr(t, 'hard_stop', t.stop)} "
-            f"PRIMARY_TARGET_PRICE:{t.target} PRIMARY_TARGET_TYPE:{t.tcm8_barrier_type} "
-            f"TARGET_R:{round(float(getattr(t, 'tcm8_target_r', 0) or 0), 4)}",
-            flush=True,
-        )
 
     def _ema_clear_setup(self) -> None:
         self._ema_pending_side = Side.NONE
@@ -2729,20 +2043,6 @@ class Mark2Engine:
                 ],
             )
             return None
-        if tcm8_only_mode(self.cfg):
-            self._scout_view = ScoutView(
-                action="HOLD",
-                why="TCM8_ONLY",
-                bullets=["8TCM ONLY · SCOUT STANDS DOWN"],
-            )
-            return None
-        if barriers_only_mode(self.cfg):
-            self._scout_view = ScoutView(
-                action="HOLD",
-                why="BARRIER_ONLY",
-                bullets=["MOMENTUM BARRIERS ONLY · SCOUT STANDS DOWN"],
-            )
-            return None
         view = scout_opportunity(
             stack=stack,
             price=float(tick.price),
@@ -2755,8 +2055,8 @@ class Mark2Engine:
             scout_long_taken=self._scout_long_taken,
             scout_short_taken=self._scout_short_taken,
         )
+        self._scout_view = view
         if view.action not in ("TAKE", "OVERRIDE") or view.side == Side.NONE:
-            self._scout_view = view
             return None
         event = EventRecord(
             event_id=self.events._next_id,
@@ -2777,30 +2077,6 @@ class Mark2Engine:
             "book": "",
             "rsi": "AI SCOUT",
         }
-        self._ema_clear_setup()
-        decision = self._arm_and_maybe_execute(tick, snap, scores, event)
-        filled = decision in ("OBSERVE_EXECUTE", "PAPER_EXECUTE", "LIVE_EXECUTE") and self.paper is not None
-        if not filled:
-            reject = str(decision or "REJECT")
-            print(
-                f"AI SCOUT {view.action} BLOCKED  {view.side.value}  {reject}",
-                flush=True,
-            )
-            self._scout_view = ScoutView(
-                action="HOLD",
-                why=reject,
-                bullets=[
-                    f"SCOUT {view.action} BLOCKED · {reject}",
-                    "NO ORDER SENT",
-                ],
-            )
-            return {
-                "state": self.sm.state.value,
-                "decision": decision,
-                "reject": reject,
-                "event": event.event_id,
-                "scout": view.why,
-            }
         label = "ENTER LONG" if view.side == Side.LONG else "ENTER SHORT"
         extra = {
             "message": f"{label} · {view.action}",
@@ -2820,16 +2096,18 @@ class Mark2Engine:
             trade_state="PROBATION",
             extra=extra,
         )
-        self._scout_view = view
-        if view.side == Side.LONG:
-            self._scout_long_taken = True
-            self._ema_long_stack_taken = True
-        else:
-            self._scout_short_taken = True
-            self._ema_short_stack_taken = True
-        self._scout_missed_side = Side.NONE
-        self._scout_missed_why = ""
-        self.paper.ema_entry_tag = view.why
+        self._ema_clear_setup()
+        decision = self._arm_and_maybe_execute(tick, snap, scores, event)
+        if self.paper is not None:
+            if view.side == Side.LONG:
+                self._scout_long_taken = True
+                self._ema_long_stack_taken = True
+            else:
+                self._scout_short_taken = True
+                self._ema_short_stack_taken = True
+            self._scout_missed_side = Side.NONE
+            self._scout_missed_why = ""
+            self.paper.ema_entry_tag = view.why
         return {
             "state": self.sm.state.value,
             "decision": decision,
@@ -2974,7 +2252,7 @@ class Mark2Engine:
                 "trailPts": float(getattr(self.cfg, "TIP_TRAIL_START_POINTS", 7.5) or 7.5),
                 "keepUsd": 0.0,
                 "peakUsd": 0.0,
-                "growMode": bool(getattr(self.cfg, "ENABLE_GROW_MODE", False)),
+                "growMode": bool(getattr(self.cfg, "ENABLE_GROW_MODE", True)),
                 "growGrab": 50.0,
                 "stallBars": 0,
             }
@@ -2989,11 +2267,7 @@ class Mark2Engine:
         give = float(getattr(self.cfg, "MFE_GIVEBACK_FRAC", 0.30) or 0.30)
         compress = float(getattr(self.cfg, "SPREAD_COMPRESS_FRAC", 0.35) or 0.35)
         floor_pts = float(getattr(paper, "giveback_floor_pts", 0) or 0)
-        stall_bars = int(getattr(paper, "stall_score", 0) or 0)
-        fading = mfe_losing_momentum(
-            paper, price=px, cfg=self.cfg, stall_bars=stall_bars, rsi=None
-        )
-        if floor_pts <= 0 and mfe > 0 and (state == "RUNNER" or fading):
+        if state == "RUNNER" and floor_pts <= 0 and mfe > 0:
             floor_pts = mfe_giveback_floor_pts(mfe, self.cfg)
         if paper.side == Side.LONG:
             floor_px = float(paper.entry) + floor_pts if floor_pts > 0 else 0.0
@@ -3020,6 +2294,7 @@ class Mark2Engine:
         equity = float(self.account.get("equity") or self.account.get("cash") or 0)
         grow_on = grow_mode_active(self.cfg, equity)
         keep_usd = profit_keep_usd(peak_usd, self.cfg)
+        stall_bars = int(getattr(paper, "stall_score", 0) or 0)
         tip_pts = float(getattr(paper, "tip_trail_pts", 0) or 0)
         if tip_pts <= 0 and peak_usd + 1e-9 >= float(
             getattr(self.cfg, "TIP_TRAIL_ARM_USD", 100.0) or 100.0
@@ -3037,16 +2312,14 @@ class Mark2Engine:
             threat = "ADVERSE STACK"
         elif state != "PROBATION" and expanded and compress_used >= 0.70:
             threat = "COMPRESSION"
-        elif floor_pts > 0 and give_used >= 0.70:
+        elif state == "RUNNER" and give_used >= 0.70:
             threat = "MFE GIVEBACK"
         elif grow_on and peak_usd + 1e-9 >= float(getattr(self.cfg, "GROW_GRAB_USD", 50.0) or 50.0) and stall_bars >= 2:
             threat = "GROW BANK"
         elif keep_usd > 0:
             threat = "DOLLAR FLOOR / TIP TRAIL"
-        elif floor_pts > 0:
-            threat = "70% MFE FLOOR"
         elif state == "RUNNER":
-            threat = "TIP TRAIL"
+            threat = "70% MFE FLOOR"
         elif state in ("CONFIRMED", "CONFIRMED_TREND"):
             threat = "PROTECT / STRUCTURE"
         return {
@@ -3112,65 +2385,6 @@ class Mark2Engine:
             return
         self._last_ema_overlay = key
         sink.send_ema_overlay(enabled=on, ema9=e9, ema20=e20, ema50=e50)
-        self._push_barrier_overlay()
-        self._push_tcm8_overlay()
-
-    def _push_tcm8_overlay(self) -> None:
-        sink = self.execution.sink
-        if sink is None or not hasattr(sink, "send_tcm8_overlay"):
-            return
-        on = tcm8_enabled(self.cfg)
-        period = max(1, int(getattr(self.cfg, "TCM8_EMA_PERIOD", 8) or 8))
-        ema1m = ema1h = 0.0
-        if on:
-            ema1m = last_ema(list(self._tcm8_bars_1m) or list(self.completed_bars), period)
-            ema1h = last_ema(self._tcm8_htf_bars(60), period)
-            row = self._tcm8_last or {}
-            if float(row.get("ema8") or 0) > 0:
-                ema1m = float(row.get("ema8") or ema1m)
-        key = (on, round(ema1m, 2), round(ema1h, 2))
-        if key == self._last_tcm8_overlay:
-            return
-        self._last_tcm8_overlay = key
-        try:
-            sink.send_tcm8_overlay(enabled=on, ema1m=ema1m, ema1h=ema1h, ema4h=0.0)
-        except Exception:
-            pass
-
-    def _push_barrier_overlay(self) -> None:
-        sink = self.execution.sink
-        if sink is None or not hasattr(sink, "send_barrier_overlay"):
-            return
-        hud = self._barrier_hud()
-        on = bool(hud.get("enabled"))
-        pdh = float(hud.get("pdh") or 0)
-        pdl = float(hud.get("pdl") or 0)
-        long_z = hud.get("long") or {}
-        short_z = hud.get("short") or {}
-        nxt_l = float(long_z.get("price") or 0) if long_z.get("found") else 0.0
-        nxt_s = float(short_z.get("price") or 0) if short_z.get("found") else 0.0
-        if not on:
-            pdh = pdl = nxt_l = nxt_s = 0.0
-        key = (
-            on,
-            round(pdh, 2),
-            round(pdl, 2),
-            round(nxt_l, 2),
-            round(nxt_s, 2),
-        )
-        if key == self._last_barrier_overlay:
-            return
-        self._last_barrier_overlay = key
-        try:
-            sink.send_barrier_overlay(
-                enabled=on,
-                pdh=pdh,
-                pdl=pdl,
-                next_long=nxt_l,
-                next_short=nxt_s,
-            )
-        except Exception:
-            pass
 
     def _ema_atr(self) -> float:
         """Completed-bar ATR14. Extension, pullback, and logged ATR14 all use this."""
@@ -3277,89 +2491,31 @@ class Mark2Engine:
         snap = self.last_snap
         return "" if snap is None else str(snap.trend_regime or "")
 
-    def _ema_feed(
-        self,
-        *,
-        side: str,
-        tag: str,
-        extra: str = "",
-        tick_bucket: bool = False,
-        stack=None,
-    ) -> None:
-        """HUD decision log: close to firing vs did not fire. Deduped per bar/tag."""
-        mapped = _ema_feed_copy(tag)
-        if mapped is None:
-            return
-        kind, text = mapped
-        last = self.completed_bars[-1] if self.completed_bars else {}
-        bar = str(int(time.time() // 8)) if tick_bucket else str(last.get("time") or "")
-        if bar != self._ema_feed_bar:
-            self._ema_feed_bar = bar
-            self._ema_feed_seen = set()
-        side_txt = str(side or "LONG").upper()
-        key = f"{side_txt}|{str(tag or '').upper()}"
-        if key in self._ema_feed_seen:
-            return
-        if str(tag or "").upper() == "WHITE_ONLY" and f"{side_txt}|WAIT_9_50" in self._ema_feed_seen:
-            return
-        self._ema_feed_seen.add(key)
-        extra_bit = f" · {extra}" if extra else ""
-        line = f"{kind} · {side_txt} · {text}{extra_bit}"
-        px = float(last.get("close") or 0)
-        if px <= 0 and self.last_snap is not None:
-            px = float(self.last_snap.price or 0)
-        self.recent_decisions.append(
-            {
-                "price": round(px, 2),
-                "state": kind,
-                "direction": side_txt,
-                "decision": kind,
-                "reject": str(tag or "").upper(),
-                "note": line,
-                "event": "EMA",
-                "eventId": 0,
-                "confidence": 0.0,
-                "opportunity": 0.0,
-                "extension": 0.0,
-            }
-        )
-        print(line, flush=True)
-        try:
-            self.log.write(
-                "MARK2_EMA_WATCH",
-                message=line,
-                reason=str(tag or "").upper(),
-                side=side_txt,
-                price=px,
-            )
-        except OSError:
-            pass
-
-    def _ema_feed_proximity(self, stack) -> None:
-        if stack is None:
-            return
-        ix = intersection_status(stack, self.cfg, self._ema_atr(), bars=self._ema_live_bars())
-        stage = str(ix.stage or "").upper()
-        side = str(ix.side or "LONG")
-        if stage in ("WAIT_9_20", "WAIT_9_50", "WAIT_CLOSE", "READY"):
-            extra = ""
-            if ix.armed_920 and stage == "WAIT_9_50":
-                extra = "CLOSE TO FIRE"
-            elif stage == "WAIT_9_20":
-                extra = "GETTING CLOSE"
-            self._ema_feed(side=side, tag=stage, extra=extra, stack=stack)
-            return
-        if stage in ("TIGHT", "STALE", "QUALITY"):
-            reject = str(ix.reject or stage).upper()
-            if str(side).upper() == "LONG" and reject in ("STACK_STALE", "STALE", "STALE_BLUE"):
-                return
-            self._ema_feed(side=side, tag=reject, stack=stack)
-
     def _ema_ignore_long(self, why: str, stack) -> None:
         self._ema_ignore_sniper(why, stack)
 
     def _ema_ignore_sniper(self, why: str, stack) -> None:
         tag = str(why or "").upper()
+        if tag not in (
+            "WHITE_ONLY",
+            "NOT_BEARISH",
+            "NOT_BULLISH",
+            "BLUE_WARMUP",
+            "RED_FALLING",
+            "STACK_STALE",
+            "STACK_USED",
+            "BULL_WAIT_CLOSE",
+            "WAIT_CLOSE",
+            "NO_SNIPER",
+            "CHOPPY",
+            "CHAOTIC",
+            "RSI_NOT_DYING",
+            "NO_INTERSECT",
+            "RED_RISING",
+            "FADE_SHORT_OFF",
+            "WAIT_BREAK",
+        ):
+            return
         side_txt = "LONG"
         if tag in (
             "NOT_BULLISH",
@@ -3368,55 +2524,19 @@ class Mark2Engine:
             "RED_RISING",
             "FADE_SHORT_OFF",
             "WAIT_BREAK",
-            "LONG_ONLY",
         ):
             side_txt = "SHORT"
         elif tag == "WHITE_ONLY" and stack is not None and cross_side(stack) == Side.SHORT:
             side_txt = "SHORT"
-        if tag in ("WAIT_CLOSE", "BULL_WAIT_CLOSE"):
-            self._ema_feed(side=side_txt, tag=tag, extra="GETTING CLOSE", stack=stack)
-        elif not (side_txt == "LONG" and tag in ("STACK_STALE", "STALE", "STALE_BLUE")):
-            self._ema_feed(side=side_txt, tag=tag, stack=stack)
-        if tag not in (
-            "WHITE_ONLY",
-            "NOT_BEARISH",
-            "NOT_BULLISH",
-            "BLUE_WARMUP",
-            "RED_FALLING",
-            "STACK_STALE",
-            "STALE_BLUE",
-            "TIGHT",
-            "STACK_USED",
-            "BULL_WAIT_CLOSE",
-            "WAIT_CLOSE",
-            "CHOPPY",
-            "CHAOTIC",
-            "RSI_NOT_DYING",
-            "NO_INTERSECT",
-            "RED_RISING",
-            "FADE_SHORT_OFF",
-            "WAIT_BREAK",
-            "LONG_ONLY",
-            "REJECT_EMA_COMPRESSION",
-            "REJECT_9_20_GAP_TOO_SMALL",
-            "REJECT_TOTAL_SPREAD_TOO_SMALL",
-            "REJECT_EMA9_NOT_RISING",
-            "REJECT_EMA20_NOT_RISING",
-            "REJECT_EMA50_FALLING_TOO_FAST",
-            "REJECT_SPREAD_NOT_EXPANDING",
-            "REJECT_PRICE_BELOW_STRUCTURE",
-        ):
-            return
         last = self.completed_bars[-1] if self.completed_bars else {}
         close = float(last.get("close") or 0)
         msg = f"{side_txt} IGNORED: {tag}"
         print(msg, flush=True)
-        if stack is not None:
-            print(
-                f"EMA9:{stack.ema9:.2f}  EMA20:{stack.ema20:.2f}  EMA50:{stack.ema50:.2f}  "
-                f"Bias:{self._ema_bias() or 'NA'}",
-                flush=True,
-            )
+        print(
+            f"EMA9:{stack.ema9:.2f}  EMA20:{stack.ema20:.2f}  EMA50:{stack.ema50:.2f}  "
+            f"Bias:{self._ema_bias() or 'NA'}",
+            flush=True,
+        )
         self._ema_write(
             "EMA_IGNORED",
             side=side_txt,
@@ -3437,78 +2557,61 @@ class Mark2Engine:
     def _ema_try_arm_signal(
         self, side: Side, stack, *, allow_entry: bool, why: str = "", fill_now: bool = True
     ) -> None:
-        if tcm8_only_mode(self.cfg):
-            return
-        if self._trade_slot_busy():
-            return
         if not allow_entry or side == Side.NONE:
             return
         if self._trade_gap_blocked():
-            left = self._trade_gap_left()
-            self._ema_feed(
-                side=side.value,
-                tag="COOLDOWN",
-                extra=f"{left:.0f}s left",
-                tick_bucket=True,
-                stack=stack,
-            )
             return
         if side == Side.LONG:
             self._ema_release_long_stack(stack)
-            if not str(why or "").startswith("BARRIER_TREND"):
-                ok, reason = ema_long_arm_ok(
-                    stack,
-                    why,
-                    self.cfg,
-                    stack_taken=self._ema_long_stack_taken,
-                    completed=read_ema_stack(self.completed_bars, self.cfg),
-                    live_tick=not fill_now,
-                    regime=self._ema_regime(),
-                    bias=self._ema_bias(),
-                    atr=self._ema_atr(),
-                    bars=self.completed_bars,
-                )
-                if not ok:
-                    self._ema_ignore_sniper(reason, stack)
-                    return
+            ok, reason = ema_long_arm_ok(
+                stack,
+                why,
+                self.cfg,
+                stack_taken=self._ema_long_stack_taken,
+                completed=read_ema_stack(self.completed_bars, self.cfg),
+                live_tick=not fill_now,
+                regime=self._ema_regime(),
+            )
+            if not ok:
+                self._ema_ignore_sniper(reason, stack)
+                return
         if side == Side.SHORT:
             self._ema_release_short_stack(stack)
-            if not str(why or "").startswith("BARRIER_TREND"):
-                rsi_now, rsi_prev, rsi_peak = self._ema_rsi_state()
-                ok, reason = ema_short_arm_ok(
-                    stack,
-                    why,
-                    self.cfg,
-                    stack_taken=self._ema_short_stack_taken,
-                    completed=read_ema_stack(self.completed_bars, self.cfg),
-                    live_tick=not fill_now,
-                    bias=self._ema_bias(),
-                    atr=self._ema_atr(),
-                    rsi=rsi_now,
-                    rsi_prev=rsi_prev,
-                    rsi_peak=rsi_peak,
-                    regime=self._ema_regime(),
-                    fade_ready=self._ema_fade_ready(),
-                )
-                if not ok:
-                    self._ema_ignore_sniper(reason, stack)
-                    return
+            rsi_now, rsi_prev, rsi_peak = self._ema_rsi_state()
+            ok, reason = ema_short_arm_ok(
+                stack,
+                why,
+                self.cfg,
+                stack_taken=self._ema_short_stack_taken,
+                completed=read_ema_stack(self.completed_bars, self.cfg),
+                live_tick=not fill_now,
+                bias=self._ema_bias(),
+                atr=self._ema_atr(),
+                rsi=rsi_now,
+                rsi_prev=rsi_prev,
+                rsi_peak=rsi_peak,
+                regime=self._ema_regime(),
+                fade_ready=self._ema_fade_ready(),
+            )
+            if not ok:
+                self._ema_ignore_sniper(reason, stack)
+                return
         if not self._ema_side_allowed(side, why):
             last = self.completed_bars[-1] if self.completed_bars else {}
             close = float(last.get("close") or 0)
-            tag = "LONG_ONLY" if side == Side.SHORT else "SIDE_OFF"
-            msg = "SHORT IGNORED: LONG_ONLY" if side == Side.SHORT else f"{side.value} IGNORED: SIDE OFF"
-            print(msg, flush=True)
-            self._ema_feed(side=side.value, tag=tag, extra="DID NOT FIRE", stack=stack)
+            print(
+                f"SHORT IGNORED: LONG_ONLY" if side == Side.SHORT else f"{side.value} IGNORED: SIDE OFF",
+                flush=True,
+            )
             self._ema_write(
                 "EMA_IGNORED",
                 side=side.value,
                 action="IGNORE",
                 price=close,
-                extra={"message": msg, "reason": tag},
+                extra={
+                    "message": "SHORT IGNORED: LONG_ONLY" if side == Side.SHORT else f"{side.value} IGNORED: SIDE OFF",
+                },
             )
-            return
-        if self._barrier_blocks_entry(side, why):
             return
         last = self.completed_bars[-1] if self.completed_bars else {}
         close = float(last.get("close") or 0)
@@ -3520,12 +2623,6 @@ class Mark2Engine:
             print(
                 f"ENTRY REJECTED: MIN_BARS_SINCE_LAST_CROSS  bars={since}  need={min_gap}",
                 flush=True,
-            )
-            self._ema_feed(
-                side=side.value,
-                tag="MIN_BARS_SINCE_LAST_CROSS",
-                extra=f"{since}/{min_gap} bars",
-                stack=stack,
             )
             return
         if why == "EMA_FADE_SHORT":
@@ -3636,8 +2733,6 @@ class Mark2Engine:
                 side == Side.SHORT and bool(getattr(self.cfg, "EMA_SHORT_SNIPER", True))
             ):
                 self._ema_pending_why = str(why or "EMA_INTERSECTION_SHORT")
-            elif str(why or "").startswith("BARRIER_TREND"):
-                self._ema_pending_why = str(why)
             else:
                 self._ema_pending_why = "EMA_CROSS_LONG" if side == Side.LONG else "EMA_CROSS_SHORT"
             if fill_now:
@@ -3658,12 +2753,10 @@ class Mark2Engine:
                 price=close,
                 extra={"message": "ENTRY REJECTED: EXTENDED", "maxExtensionATR": ext.get("maxExtensionATR")},
             )
-            self._ema_feed(side=side.value, tag="EXTENDED", extra="DID NOT FIRE", stack=stack)
             return
         print(f"{label} CROSS DETECTED - PRICE EXTENDED", flush=True)
         print("DO NOT CHASE", flush=True)
         print("WAITING FOR PULLBACK", flush=True)
-        self._ema_feed(side=side.value, tag="PULLBACK", extra="GETTING CLOSE", stack=stack)
         self._ema_pending_side = Side.NONE
         self._ema_pending_why = ""
         self._ema_pullback = EmaPullbackSetup(
@@ -3832,19 +2925,7 @@ class Mark2Engine:
         if not self._ema_armed:
             self._ema_armed = True
 
-        if tcm8_only_mode(self.cfg):
-            return
-
-        if self.paper is not None:
-            if uses_tcm8_hold(self.paper):
-                return
-            if not bool(getattr(self.paper, "ema_strategy", False)):
-                return
-
         if not sequential:
-            if barriers_only_mode(self.cfg):
-                self._barrier_try_trend_entry(stack)
-                return
             side, why = ema_entry_signal(self.completed_bars, self.cfg, **self._ema_entry_kwargs())
             print(
                 f"EMA BAR: {cur_time}  9:{stack.ema9:.2f}  20:{stack.ema20:.2f}  "
@@ -3898,13 +2979,6 @@ class Mark2Engine:
                 self._ema_reversal_side = flip
             return
 
-        if (sequential or self._413.waiting_pullback) and self._413_on_completed_bar():
-            return
-
-        if barriers_only_mode(self.cfg):
-            self._barrier_try_trend_entry(stack)
-            return
-
         side, why = ema_entry_signal(self.completed_bars, self.cfg, **self._ema_entry_kwargs())
         print(
             f"EMA BAR: {cur_time}  9:{stack.ema9:.2f}  20:{stack.ema20:.2f}  "
@@ -3931,477 +3005,13 @@ class Mark2Engine:
                 self._ema_try_arm_signal(side, stack, allow_entry=True, why=why)
             return
         if side == Side.NONE:
-            self._ema_feed_proximity(stack)
             self._ema_ignore_sniper(str(why or "").upper(), stack)
             return
         self._ema_note_cross_gap()
         self._ema_try_arm_signal(side, stack, allow_entry=True, why=why)
 
-    def _413_log(self, scan, *, price: float = 0.0) -> None:
-        note = filter_note_413(scan.filters) if scan.filters else str(scan.reason or "")
-        alert = str(scan.alert or scan.reason or "413")
-        line = f"413 LONG · {alert} · {note}"
-        last = self.completed_bars[-1] if self.completed_bars else {}
-        px = float(price or last.get("close") or 0)
-        self.recent_decisions.append(
-            {
-                "price": round(px, 2),
-                "state": alert,
-                "direction": "LONG",
-                "decision": alert,
-                "reject": "" if scan.arm else str(scan.reason or ""),
-                "note": line,
-                "event": "413",
-                "eventId": 0,
-                "confidence": 0.0,
-                "opportunity": 0.0,
-                "extension": 0.0,
-                "trigger": str(scan.reason or "413_LONG"),
-            }
-        )
-        print(line, flush=True)
-        self._ema_write(
-            "413_SETUP",
-            side="LONG",
-            action=alert,
-            price=px,
-            extra={"message": line, "filters": dict(scan.filters or {})},
-        )
-        if scan.arm:
-            self._ema_feed(side="LONG", tag="413_ARMED", extra=str(scan.reason or ""))
-        elif scan.cancel:
-            self._ema_feed(side="LONG", tag="413_CANCEL", extra=str(scan.reason or ""))
-        elif str(scan.reason or "").startswith("413_WAIT"):
-            self._ema_feed(side="LONG", tag="413_PULLBACK", extra="waiting rejection")
-
-    def _413_on_completed_bar(self) -> bool:
-        """Arm 413 LONG independently of sniper. True = skip sniper this bar."""
-        if tcm8_only_mode(self.cfg) or barriers_only_mode(self.cfg):
-            return False
-        enabled = bool(getattr(self.cfg, "ENABLE_413_BREAKOUT", False))
-        scan = on_413_completed_bar(
-            self._413,
-            self.completed_bars,
-            self.cfg,
-            in_trade=self.paper is not None,
-            session_pnl=self._live_session_pnl(),
-            enabled=enabled,
-        )
-        if not enabled:
-            return False
-        if scan.arm or scan.cancel or scan.alert:
-            self._413_log(scan)
-        if self.paper is not None or self._ema_pending_side != Side.NONE:
-            return False
-        if scan.arm:
-            last = self.completed_bars[-1] if self.completed_bars else {}
-            px = float(last.get("close") or scan.trigger_px or 0)
-            if self._barrier_blocks_entry(Side.LONG, str(scan.reason or "413_LONG"), price=px):
-                return False
-            self._ema_pending_side = Side.LONG
-            self._ema_pending_why = str(scan.reason or "413_LONG")
-            return True
-        if self._413.waiting_pullback or self._413.armed:
-            return True
-        return False
-
-    def _tcm8_htf_bars(self, minutes: int) -> list[dict]:
-        native = self._bars_4h if int(minutes) >= 240 else self._bars_1h
-        need = int(getattr(self.cfg, "TCM8_EMA_PERIOD", 8) or 8) + int(
-            getattr(self.cfg, "TCM8_TREND_SLOPE_LOOKBACK", 5) or 5
-        ) + 2
-        merged = overlay_forming_htf(list(native), list(self._tcm8_bars_1m), int(minutes))
-        if len(merged) >= need:
-            return merged
-        return aggregate_timeframe(list(self._tcm8_bars_1m), int(minutes))
-
-    def _tcm8_hud(self) -> dict[str, Any]:
-        return tcm8_trade_hud(
-            self.cfg,
-            self._tcm8_last,
-            stats=self._tcm8_stats.summary(),
-            trade=self.paper,
-        )
-
-    def _tcm8_log_candidate(self, row: dict[str, Any]) -> None:
-        self._tcm8_last = dict(row)
-        self.log.write("TCM8_CANDIDATE", **row)
-        line = format_tcm8_log(row)
-        print(line, flush=True)
-        self._push_tcm8_overlay()
-        publish_from_engine(self)
-        reason = str(row.get("reason") or "")
-        if not row.get("accept") and reason in ("DISABLED",):
-            return
-        last = self.completed_bars[-1] if self.completed_bars else {}
-        px = float(last.get("close") or row.get("entry") or 0)
-        kind = "CLOSE" if row.get("accept") else "NO_FIRE"
-        self.recent_decisions.append(
-            {
-                "price": round(px, 2),
-                "state": kind,
-                "direction": str(row.get("direction") or ""),
-                "decision": "ACCEPT" if row.get("accept") else "REJECT",
-                "reject": reason,
-                "note": line,
-                "event": "8TCM",
-                "eventId": 0,
-                "confidence": 0.0,
-                "opportunity": 0.0,
-                "extension": 0.0,
-            }
-        )
-
-    def _tcm8_on_completed_bar(self) -> bool:
-        if not tcm8_enabled(self.cfg):
-            return False
-        if self._trade_slot_busy():
-            return False
-        row = evaluate_tcm8(
-            cfg=self.cfg,
-            bars_1m=list(self._tcm8_bars_1m) or list(self.completed_bars),
-            bars_1h=self._tcm8_htf_bars(60),
-            bars_4h=self._tcm8_htf_bars(240),
-            book=self._barriers,
-            setup=self._tcm8,
-            armed=bool(self.cfg.MARK2_ENABLED),
-            connected=bool(self.risk.connected),
-            cooldown=self._trade_gap_blocked(),
-            allow_long=bool(getattr(self.cfg, "ENABLE_8TCM_LONGS", True)),
-            allow_short=bool(getattr(self.cfg, "ENABLE_8TCM_SHORTS", False)),
-        )
-        if str(row.get("reason") or "") == "DISABLED":
-            return False
-        self._tcm8_log_candidate(row)
-        if not row.get("accept"):
-            return False
-        return self._tcm8_execute(row)
-
-    def _tcm8_execute(self, row: dict[str, Any]) -> bool:
-        if self._trade_slot_busy():
-            return False
-        if self.goal_met:
-            return False
-        raw = str(row.get("direction") or "")
-        side = Side.LONG if raw == "LONG" else Side.SHORT if raw == "SHORT" else Side.NONE
-        if side == Side.NONE:
-            return False
-        entry = float(row.get("entry") or 0)
-        stop = float(row.get("stop") or 0)
-        target = float(row.get("barrier_price") or 0)
-        if entry <= 0 or stop <= 0:
-            return False
-        last = self.completed_bars[-1] if self.completed_bars else {}
-        ts = _bar_ts(last) if last else time.time()
-        tag = ENTRY_LONG if side == Side.LONG else ENTRY_SHORT
-        classic = bool(getattr(self.cfg, "ENABLE_8TCM_CLASSIC_TARGET", True))
-        runner = bool(getattr(self.cfg, "ENABLE_8TCM_RUNNER", False))
-        qty = int(self.acct_risk.clamp_qty(self.cfg.contracts()))
-        intent = Intent(
-            side=side,
-            price=entry,
-            stop=stop,
-            quantity=qty,
-            reason=tag,
-            ts=float(ts),
-            take_profit=target if classic and not runner and target > 0 else None,
-        )
-        result = self.execution.enter(intent)
-        if result not in ("OBSERVE_EXECUTE", "PAPER_EXECUTE", "LIVE_EXECUTE"):
-            print(f"8TCM LIVE ORDER NOT SENT  {result}", flush=True)
-            row["accept"] = False
-            row["reason"] = str(result or "REJECT_RISK")
-            self._tcm8_log_candidate(row)
-            return False
-        event = EventRecord(
-            event_id=self.events._next_id,
-            event_type=EventType.TCM8,
-            direction=side,
-            started_ts=float(ts),
-            started_price=entry,
-            started_bar_time=str(last.get("time") or ""),
-        )
-        self.events._next_id += 1
-        self.events.active = event
-        self._last_entry_tags = {"trigger": tag, "book": "", "rsi": "8TCM"}
-        self.paper = PaperTrade(
-            side=side,
-            entry=entry,
-            entry_ts=float(ts),
-            stop=stop,
-            target=target,
-            peak=entry,
-            trough=entry,
-            qty=qty,
-            event_id=event.event_id,
-            event_type=EventType.TCM8.value,
-            fees=ROUND_TURN_FEES * qty,
-            hard_stop=float(stop),
-            ema_strategy=False,
-            ema_trade_state="8TCM",
-            atr_at_entry=float(row.get("atr") or 0),
-            ema_entry_tag=tag,
-            tcm8=True,
-            tcm8_grade=str(row.get("quality") or ""),
-            tcm8_rejection=str(row.get("rejection_type") or ""),
-            tcm8_target_r=float(row.get("target_r") or 0),
-            tcm8_barrier_type=str(row.get("primary_target_type") or row.get("barrier_type") or ""),
-            tcm8_primary_hit=False,
-            tcm8_runner=False,
-        )
-        self._ema_clear_setup()
-        self.sm.enter_management()
-        self.last_reject = RejectReason.NONE
-        if result == "LIVE_EXECUTE":
-            self._live_entry_wall = time.time()
-            self._live_filled = False
-        self._push_levels()
-        self.log.write(
-            f"MARK2_{result}",
-            price=entry,
-            direction=side.value,
-            eventType="8TCM",
-            stop=stop,
-            target=self.paper.target,
-            trigger=tag,
-            strategy="8TCM",
-            quality=row.get("quality"),
-            targetR=row.get("target_r"),
-            primaryTarget=target,
-            primaryType=row.get("primary_target_type") or row.get("barrier_type"),
-            initialRisk=row.get("risk_points"),
-            entryReason=row.get("entry_reason") or row.get("reason"),
-        )
-        tick = Tick(ts=float(ts), price=entry)
-        self._notify_trade_entry(tick)
-        ledger_record_open(
-            {
-                "side": side.value,
-                "qty": qty,
-                "entry": entry,
-                "stop": stop,
-                "hard": float(stop),
-                "target": float(target or 0),
-                "target_type": str(row.get("primary_target_type") or row.get("barrier_type") or ""),
-                "grade": str(row.get("quality") or ""),
-                "rejection": str(row.get("rejection_type") or ""),
-                "reason": str(row.get("entry_reason") or tag),
-                "clock_ts": time.time(),
-                "ts": float(ts),
-            }
-        )
-        publish_from_engine(self, extra={"state": "TRADE_ACTIVE", "accept": True}, force=True)
-        print(
-            f"8TCM FILL {tag}  {row.get('entry_reason') or tag}  entry:{entry} stop:{stop} "
-            f"PRIMARY_TARGET_PRICE:{self.paper.target} PRIMARY_TARGET_TYPE:{row.get('primary_target_type') or row.get('barrier_type')} "
-            f"DISTANCE_POINTS:{row.get('barrier_distance')} INITIAL_RISK:{row.get('risk_points')} TARGET_R:{row.get('target_r')} "
-            f"{row.get('quality')}",
-            flush=True,
-        )
-        print(format_tcm8_cmd_tables(read_tcm8_ledger() | {"open_trade": {
-            "side": side.value,
-            "qty": qty,
-            "entry": entry,
-            "stop": stop,
-            "hard": float(stop),
-            "target": float(target or 0),
-            "price": entry,
-            "pts": 0.0,
-            "usd": 0.0,
-            "mfe": 0.0,
-            "mae": 0.0,
-            "runner": False,
-            "primary": False,
-        }}), flush=True)
-        return True
-
-    def _manage_tcm8(self, tick: Tick, snap: MarketSnapshot, scores: ScoreBundle) -> dict:
-        assert self.paper is not None
-        t = self.paper
-        forming = getattr(snap, "forming_bar", None) or getattr(self, "forming_bar", None)
-        if isinstance(forming, dict):
-            hi = float(forming.get("high") or 0)
-            lo = float(forming.get("low") or 0)
-        else:
-            hi = lo = 0.0
-        if t.side == Side.LONG:
-            t.peak = max(float(t.peak), float(tick.price), hi)
-            t.trough = min(float(t.trough or tick.price), float(tick.price), lo if lo > 0 else float(tick.price))
-            t.mfe = max(float(t.mfe), t.peak - t.entry)
-            t.mae = max(float(t.mae), t.entry - t.trough)
-        else:
-            t.peak = max(float(t.peak), float(tick.price), hi)
-            t.trough = min(float(t.trough or tick.price), float(tick.price), lo if lo > 0 else float(tick.price))
-            t.mfe = max(float(t.mfe), t.entry - t.trough)
-            t.mae = max(float(t.mae), t.peak - t.entry)
-        src = "8TCM" if bool(getattr(t, "tcm8", False)) else "EMA 8TCM HOLD"
-        why = manage_tcm8_hold(t, price=tick.price, cfg=self.cfg, forming=forming if isinstance(forming, dict) else None)
-        if why == DOLLAR_ARM:
-            t.tcm8_runner = True
-            t.runner_trail_on = True
-            t.ema_strategy = True
-            t.tcm8_primary_hit = False
-            t.bank_dollars_locked = float(getattr(self.cfg, "TCM8_TRAIL_ARM_USD", 50.0) or 50.0)
-            apply_tcm8_runner_trail(t, cfg=self.cfg, price=tick.price, forming=forming if isinstance(forming, dict) else None)
-            print(
-                f"{src} DOLLAR GOAL  {tick.price}  RUNNER ACTIVE  "
-                f"${t.bank_dollars_locked:.0f} floor:{t.stop}  hard:{t.hard_stop}",
-                flush=True,
-            )
-            self._push_levels()
-            publish_from_engine(self, force=True)
-            return {"state": self.sm.state.value, "decision": "MANAGE", "reject": ""}
-        if why == RUNNER_ARM:
-            t.tcm8_primary_hit = True
-            t.tcm8_runner = True
-            t.target_touched = True
-            t.runner_trail_on = True
-            t.ema_strategy = True
-            tgt = float(getattr(t, "target", 0) or 0)
-            if tgt > 0:
-                pv = max(float(getattr(self.cfg, "POINT_VALUE", 2.0) or 2.0), 1e-9)
-                qty = max(1, int(getattr(t, "qty", 1) or 1))
-                t.bank_dollars_locked = abs(tgt - float(t.entry)) * pv * qty
-            apply_tcm8_runner_trail(t, cfg=self.cfg, price=tick.price, forming=forming if isinstance(forming, dict) else None)
-            print(
-                f"{src} PRIMARY TARGET REACHED  {tick.price}  RUNNER ACTIVE  "
-                f"purple from green {tgt}  trail:{t.stop}  hard:{t.hard_stop}",
-                flush=True,
-            )
-            self._push_levels()
-            publish_from_engine(self, force=True)
-            return {"state": self.sm.state.value, "decision": "MANAGE", "reject": ""}
-        if why:
-            self._close_position(tick, snap, scores, why)
-            self._last_manage_state = ""
-            return {"state": self.sm.state.value, "decision": "EXIT", "reject": why}
-        self._push_levels()
-        publish_from_engine(self)
-        return {"state": self.sm.state.value, "decision": "MANAGE", "reject": ""}
-
-    def _refresh_barriers(self) -> None:
-        atr_v = self._ema_atr() if self.completed_bars else 0.0
-        update_session_levels(self._barriers, self.completed_bars, persist=True)
-        refresh_structure(self._barriers, self.completed_bars, atr_v, self.cfg)
-        self._push_barrier_overlay()
-
-    def _barrier_hud(self) -> dict[str, Any]:
-        px = float(self.last_snap.price) if self.last_snap else 0.0
-        atr_v = self._ema_atr() if self.completed_bars else 0.0
-        return barrier_trade_hud(
-            self.cfg,
-            self._barriers,
-            price=px,
-            atr_v=atr_v,
-            trade=self.paper,
-        )
-
-    def _barrier_blocks_entry(self, side: Side, why: str = "", *, price: float | None = None) -> bool:
-        if not barriers_enabled(self.cfg):
-            return False
-        last = self.completed_bars[-1] if self.completed_bars else {}
-        px = float(price if price is not None else last.get("close") or 0)
-        atr_v = self._ema_atr()
-        zone = evaluate_entry_room(side, px, self._barriers, atr_v, self.cfg)
-        filter_on = bool(getattr(self.cfg, "ENABLE_BARRIER_ENTRY_FILTER", True))
-        allowed = (not filter_on) or bool(zone.room_ok)
-        line = format_entry_log(direction=side, entry=px, atr_v=atr_v, zone=zone, allowed=allowed)
-        print(line, flush=True)
-        self._ema_write(
-            "BARRIER_ENTRY",
-            side=side.value,
-            action="ALLOW" if allowed else "REJECT",
-            price=px,
-            extra={
-                "message": line,
-                "barrier": zone.as_dict(),
-                "reason": why,
-            },
-        )
-        if allowed:
-            return False
-        self._ema_feed(
-            side=side.value,
-            tag=REJECT_NEAR_MOMENTUM_BARRIER,
-            extra="DID NOT FIRE",
-        )
-        self._ema_write(
-            "EMA_REJECT",
-            side=side.value,
-            action="REJECT",
-            price=px,
-            extra={"message": line, "reason": REJECT_NEAR_MOMENTUM_BARRIER},
-        )
-        return True
-
-    def _barrier_try_trend_entry(self, stack) -> bool:
-        if tcm8_only_mode(self.cfg) or not barriers_only_mode(self.cfg):
-            return False
-        if self.paper is not None or self._ema_pending_side != Side.NONE:
-            return False
-        if stack is None or not self.completed_bars:
-            return False
-        atr_v = self._ema_atr()
-        last = self.completed_bars[-1]
-        close = float(last.get("close") or 0)
-        if close <= 0:
-            return False
-        if (
-            bool(getattr(self.cfg, "EMA_ALLOW_LONG", True))
-            and float(stack.ema9) > float(stack.ema20)
-            and red_rising(stack)
-            and close > float(stack.ema20)
-            and not is_ema_compressed(stack, atr_v, self.cfg)
-        ):
-            self._ema_try_arm_signal(Side.LONG, stack, allow_entry=True, why="BARRIER_TREND_LONG")
-            return self._ema_pending_side == Side.LONG
-        if (
-            bool(getattr(self.cfg, "EMA_ALLOW_SHORT", False))
-            and float(stack.ema9) < float(stack.ema20)
-            and close < float(stack.ema20)
-            and not is_ema_compressed(stack, atr_v, self.cfg)
-        ):
-            self._ema_try_arm_signal(Side.SHORT, stack, allow_entry=True, why="BARRIER_TREND_SHORT")
-            return self._ema_pending_side == Side.SHORT
-        return False
-
-    def _sync_trade_barrier(self, price: float, stack) -> None:
-        if self.paper is None or not barriers_enabled(self.cfg):
-            return
-        atr_v = self._ema_atr()
-        bars = self.completed_bars
-        ema9 = None if stack is None else float(stack.ema9)
-        ema20 = None if stack is None else float(stack.ema20)
-        prev9 = None if stack is None else float(stack.prev9)
-        regime = str(getattr(self.paper, "ai_exit_state", "") or "")
-        spread = ""
-        try:
-            from .ai_exit import classify_spread
-
-            if stack is not None:
-                gap_now = (stack.ema9 - stack.ema20) if self.paper.side == Side.LONG else (stack.ema20 - stack.ema9)
-                gap_prev = (stack.prev9 - stack.prev20) if self.paper.side == Side.LONG else (stack.prev20 - stack.prev9)
-                spread = classify_spread(gap_now, gap_prev, (gap_now + gap_prev) / 2.0, atr_v)
-        except Exception:
-            spread = ""
-        sync_trade_barrier(
-            self.paper,
-            self._barriers,
-            bars,
-            price=float(price),
-            atr_v=atr_v,
-            cfg=self.cfg,
-            ema9=ema9,
-            ema20=ema20,
-            prev9=prev9,
-            spread_regime=spread,
-            momentum_score=int(getattr(self.paper, "ai_momentum_score", 0) or 0),
-        )
-
     def _ema_scan_live_long(self) -> None:
         """Keep watching while flat: red through white+blue must still get us in."""
-        if tcm8_only_mode(self.cfg) or barriers_only_mode(self.cfg):
-            return
         if not self._ema_mode():
             return
         if len(self.completed_bars) < 15:
@@ -4420,11 +3030,7 @@ class Mark2Engine:
                 tag = "CHOPPY"
             elif stack is not None:
                 long_tag = long_sniper_reason(
-                    stack,
-                    self.cfg,
-                    bias=self._ema_bias(),
-                    atr=self._ema_atr(),
-                    bars=self.completed_bars,
+                    stack, self.cfg, bias=self._ema_bias(), atr=self._ema_atr()
                 )
                 short_tag = short_sniper_reason(
                     stack, self.cfg, bias=self._ema_bias(), atr=self._ema_atr()
@@ -4437,14 +3043,6 @@ class Mark2Engine:
                     "STACK_STALE",
                     "STALE_BLUE",
                     "TIGHT",
-                    "REJECT_EMA_COMPRESSION",
-                    "REJECT_9_20_GAP_TOO_SMALL",
-                    "REJECT_TOTAL_SPREAD_TOO_SMALL",
-                    "REJECT_EMA9_NOT_RISING",
-                    "REJECT_EMA20_NOT_RISING",
-                    "REJECT_EMA50_FALLING_TOO_FAST",
-                    "REJECT_SPREAD_NOT_EXPANDING",
-                    "REJECT_PRICE_BELOW_STRUCTURE",
                 ):
                     tag = long_tag
                 elif short_tag in (
@@ -4458,7 +3056,6 @@ class Mark2Engine:
                     tag = short_tag
                 else:
                     tag = long_tag or short_tag or why
-            self._ema_feed_proximity(stack)
             self._ema_note_watch(str(tag or "no_cross"), stack)
             return
         if stack is None:
@@ -4473,9 +3070,6 @@ class Mark2Engine:
                 completed=done,
                 live_tick=True,
                 regime=self._ema_regime(),
-                bias=self._ema_bias(),
-                atr=self._ema_atr(),
-                bars=self.completed_bars,
             )
             if not ok:
                 self._ema_note_watch(reason, done or stack)
@@ -4525,6 +3119,7 @@ class Mark2Engine:
             "STACK_USED",
             "BULL_WAIT_CLOSE",
             "WAIT_CLOSE",
+            "NO_SNIPER",
             "CHOPPY",
             "RSI_NOT_DYING",
             "NO_INTERSECT",
@@ -4532,13 +3127,8 @@ class Mark2Engine:
             "FADE_SHORT_OFF",
             "WAIT_BREAK",
         ):
-            if self._ema_watch in ("STACK_STALE", "STALE_BLUE") and stack is not None:
-                if red_above_white_and_blue(stack):
-                    return
             if stack is not None:
                 self._ema_ignore_sniper(self._ema_watch, stack)
-            else:
-                self._ema_feed(side="LONG", tag=self._ema_watch)
             return
         if self._ema_watch in ("NO_SNIPER", "NO_CROSS"):
             print(f"EMA WATCH: {self._ema_watch}  (not choppy/regime — lines only)", flush=True)
@@ -4554,12 +3144,6 @@ class Mark2Engine:
         if not self.cfg.MARK2_ENABLED:
             if self._ema_pending_side != Side.NONE:
                 print("DISARMED - NO TRADE", flush=True)
-                self._ema_feed(
-                    side=self._ema_pending_side.value,
-                    tag="DISARMED",
-                    extra="DID NOT FIRE",
-                    tick_bucket=True,
-                )
                 self._ema_write(
                     "EMA_IGNORED",
                     side=self._ema_pending_side.value,
@@ -4584,12 +3168,6 @@ class Mark2Engine:
                 ],
             )
             self.sm.state = EngineState.WATCHING
-            self._ema_feed(
-                side="LONG",
-                tag="COOLDOWN",
-                extra=f"{left:.0f}s left",
-                tick_bucket=True,
-            )
             return {"state": self.sm.state.value, "decision": "WAIT", "reject": "COOLDOWN"}
         self._ema_scan_live_long()
         side = self._ema_pending_side
@@ -4615,12 +3193,7 @@ class Mark2Engine:
                 return scouted
             self.sm.state = EngineState.WATCHING
             return {"state": self.sm.state.value, "decision": "WAIT", "reject": ""}
-        why_pending = str(self._ema_pending_why or "")
-        if why_pending.startswith("413"):
-            if not tick_413_should_fill(self._413, tick.price):
-                self.sm.state = EngineState.WATCHING
-                return {"state": self.sm.state.value, "decision": "WAIT", "reject": "413_TRIGGER"}
-        if stack is not None and why_pending not in (
+        if stack is not None and str(self._ema_pending_why) not in (
             "EMA_SNIPER_LONG",
             "EMA_SNIPER_SHORT",
             "EMA_INTERSECTION_LONG",
@@ -4629,7 +3202,7 @@ class Mark2Engine:
             "EMA_INTERSECT_SHORT",
             "EMA_CHOP_LONG",
             "EMA_FADE_SHORT",
-        ) and not why_pending.startswith("413"):
+        ):
             fill_ok, fill_ext = entry_extension_ok(tick.price, stack.ema20, atr_v, self.cfg)
             # Seed / stale fill only. The through-both sniper fills on the signal bar.
             if (not fill_ok) and float(fill_ext.get("extensionATR") or 0) > 2.5:
@@ -4652,7 +3225,6 @@ class Mark2Engine:
                         "maxExtensionATR": fill_ext.get("maxExtensionATR"),
                     },
                 )
-                self._ema_feed(side=side.value, tag="EXTENDED", extra="DID NOT FIRE", stack=stack)
                 self._ema_clear_setup()
                 self.sm.state = EngineState.WATCHING
                 return {"state": self.sm.state.value, "decision": "REJECT", "reject": "EXTENDED"}
@@ -4688,10 +3260,6 @@ class Mark2Engine:
             enter = "ENTER SHORT INTERSECT"
         elif str(self._ema_pending_why) == "EMA_FADE_SHORT":
             enter = "ENTER SHORT FADE"
-        elif str(self._ema_pending_why).startswith("413"):
-            enter = "ENTER 413 LONG"
-        elif str(self._ema_pending_why).startswith("BARRIER_TREND"):
-            enter = "ENTER BARRIER TREND LONG" if side == Side.LONG else "ENTER BARRIER TREND SHORT"
         pullback = str(self._ema_pending_why).startswith("EMA_PULLBACK")
         extra = {"message": "PULLBACK ENTRY" if pullback else enter}
         if pullback:
@@ -4764,7 +3332,6 @@ class Mark2Engine:
         if len(self.completed_bars) > 20:
             prev_ind = indicator_snapshot(self.completed_bars[:-1], self.cfg)
             rsi_prev = float(prev_ind.get("rsi") or 0)
-        self._sync_trade_barrier(tick.price, done_stack)
         done, why, st = manage_ema_hold(
             self.paper,
             price=tick.price,
@@ -4781,9 +3348,6 @@ class Mark2Engine:
             rsi_prev=rsi_prev,
             account_equity=float(self.account.get("equity") or self.account.get("cash") or 0),
             bars=post,
-            prev9=None if done_stack is None else float(done_stack.prev9),
-            prev20=None if done_stack is None else float(done_stack.prev20),
-            prev50=None if done_stack is None else float(done_stack.prev50),
         )
         new_state = str(getattr(self.paper, "ema_trade_state", "") or "")
         if new_state and new_state != prev_state:
@@ -4881,19 +3445,6 @@ class Mark2Engine:
             elif why == "HARD_STOP":
                 print("10 PT STOP HIT", flush=True)
                 print(leave, flush=True)
-            elif why == "MOMENTUM_STRUCTURE_BREAK":
-                print(f"{leave} - MOMENTUM STRUCTURE BREAK", flush=True)
-            elif why == "MOMENTUM_DEATH":
-                print(f"{leave} - MOMENTUM DEATH", flush=True)
-            elif why == "EARLY_SETUP_FAILURE":
-                print(f"{leave} - EARLY SETUP FAILURE", flush=True)
-            elif why == "EMA_COMPRESSION_EXIT":
-                print(f"{leave} - EMA COMPRESSION EXIT", flush=True)
-            elif why == "LOWER_LOW_BREAK":
-                print(f"{leave} - LOWER LOW BREAK", flush=True)
-            elif why == "RUNNER_PROFIT_FLOOR":
-                print("RUNNER PROFIT FLOOR HIT", flush=True)
-                print(leave, flush=True)
             elif why == "TIP_TRAIL":
                 print("5.5 TIP TRAIL HIT", flush=True)
                 print(leave, flush=True)
@@ -4971,7 +3522,6 @@ class Mark2Engine:
             sink.send_levels(clear=True)
             self._last_levels = None
             self._last_nt_stop = None
-            self._last_risk_protect = None
             return
         p = self.paper
         # Red = frozen hard stop. Purple = working protect (tip trail / $100 arm).
@@ -4987,35 +3537,24 @@ class Mark2Engine:
                 getattr(p, "early_trail", False)
             )
         trail_px = float(protect) if trail_on else 0.0
-        chart_tgt = float(p.target or 0)
-        if uses_tcm8_hold(p) and chart_tgt > 0:
-            chart_tgt = tcm8_working_target(p.side, chart_tgt, self.cfg)
         key = (
             round(p.entry, 2),
             round(hard, 2),
             round(protect, 2),
-            round(chart_tgt, 2),
+            round(p.target, 2),
             round(trail_px, 2),
             trail_on,
             p.side.value,
         )
         if key == self._last_levels:
             return
-        prev = getattr(self, "_last_risk_protect", None)
         self._last_levels = key
-        self._last_risk_protect = protect
-        if prev is not None and abs(float(protect) - float(prev)) > 1e-9 and getattr(self, "acct_risk", None):
-            self.acct_risk.log(
-                f"Runner floor moved {float(prev):.2f} -> {float(protect):.2f}",
-                prior=round(float(prev), 2),
-                stop=round(float(protect), 2),
-            )
         try:
             sink.send_levels(
                 side=p.side.value,
                 entry=p.entry,
                 stop=hard,
-                target=chart_tgt,
+                target=p.target,
                 trail=trail_px,
                 trail_active=trail_on,
                 simulate=self.mode != RunMode.LIVE,
@@ -5182,19 +3721,6 @@ class Mark2Engine:
             b["volume"] = float(tick.forming_volume)
         elif tick.volume > 0:
             b["volume"] = max(float(b.get("volume") or 0), float(tick.volume))
-
-
-def _jsonable(obj: Any) -> Any:
-    """pywebview JSON-bridges the HUD snapshot. NaN/Inf crash the .NET host."""
-    if isinstance(obj, float):
-        if obj != obj or obj == float("inf") or obj == float("-inf"):
-            return 0.0
-        return obj
-    if isinstance(obj, dict):
-        return {str(k): _jsonable(v) for k, v in obj.items()}
-    if isinstance(obj, (list, tuple)):
-        return [_jsonable(v) for v in obj]
-    return obj
 
 
 def _num(v: Any) -> float:

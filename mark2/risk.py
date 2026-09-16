@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from .config import Mark2Config
-from .licensing.manager import is_authorized
 from .types import RejectReason, Side
 
 
@@ -54,8 +53,6 @@ class RiskGate:
         return True, RejectReason.NONE
 
     def allow_entry(self, *, ts: float, qty: int, stop_points: float) -> tuple[bool, RejectReason]:
-        if not is_authorized(cfg=self.cfg):
-            return False, RejectReason.REJECT_LICENSE
         if not self.enabled or not self.cfg.MARK2_ENABLED:
             return False, RejectReason.REJECT_MODE
         return self._entry_common(ts=ts, qty=qty, stop_points=stop_points)
@@ -64,8 +61,6 @@ class RiskGate:
         self, *, ts: float, qty: int, stop_points: float
     ) -> tuple[bool, RejectReason]:
         """HUD operator orders — allowed even when auto-arm is off."""
-        if not is_authorized(cfg=self.cfg):
-            return False, RejectReason.REJECT_LICENSE
         return self._entry_common(ts=ts, qty=qty, stop_points=stop_points)
 
     def note_order(self, ts: float) -> None:

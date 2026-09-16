@@ -57,7 +57,6 @@ class Mark2Net:
         quantity: int = 1,
         stop_loss: float | None = None,
         reason: str = "",
-        take_profit: float | None = None,
     ) -> None:
         payload: dict = {
             "type": "order",
@@ -67,8 +66,6 @@ class Mark2Net:
         }
         if stop_loss is not None:
             payload["stop_loss"] = float(stop_loss)
-        if take_profit is not None:
-            payload["take_profit"] = float(take_profit)
         self.send(payload)
 
     def send_flat(self, reason: str = "") -> None:
@@ -90,17 +87,18 @@ class Mark2Net:
             self.send({"type": "levels", "clear": True})
             self.send({"type": "bracket_lines", "clear": True})
             return
-        payload = {
-            "type": "levels",
-            "side": str(side),
-            "entry": float(entry),
-            "stop": float(stop),
-            "target": float(target),
-            "trail": float(trail),
-            "trail_active": bool(trail_active),
-            "simulate": bool(simulate),
-        }
-        self.send(payload)
+        self.send(
+            {
+                "type": "levels",
+                "side": str(side),
+                "entry": float(entry),
+                "stop": float(stop),
+                "target": float(target),
+                "trail": float(trail),
+                "trail_active": bool(trail_active),
+                "simulate": bool(simulate),
+            }
+        )
         self.send(
             {
                 "type": "bracket_lines",
@@ -131,44 +129,6 @@ class Mark2Net:
                 "ema9": float(ema9),
                 "ema20": float(ema20),
                 "ema50": float(ema50),
-            }
-        )
-
-    def send_barrier_overlay(
-        self,
-        *,
-        enabled: bool,
-        pdh: float = 0.0,
-        pdl: float = 0.0,
-        next_long: float = 0.0,
-        next_short: float = 0.0,
-    ) -> None:
-        self.send(
-            {
-                "type": "barriers",
-                "enabled": bool(enabled),
-                "pdh": float(pdh or 0),
-                "pdl": float(pdl or 0),
-                "next_long": float(next_long or 0),
-                "next_short": float(next_short or 0),
-            }
-        )
-
-    def send_tcm8_overlay(
-        self,
-        *,
-        enabled: bool,
-        ema1m: float = 0.0,
-        ema1h: float = 0.0,
-        ema4h: float = 0.0,
-    ) -> None:
-        self.send(
-            {
-                "type": "tcm8_overlay",
-                "enabled": bool(enabled),
-                "ema1m": float(ema1m or 0),
-                "ema1h": float(ema1h or 0),
-                "ema4h": float(ema4h or 0),
             }
         )
 

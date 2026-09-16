@@ -21,7 +21,6 @@ class OrderSink(Protocol):
         quantity: int = 1,
         stop_loss: float | None = None,
         reason: str = "",
-        take_profit: float | None = None,
     ) -> None: ...
 
     def send_flat(self, reason: str = "") -> None: ...
@@ -37,7 +36,6 @@ class Intent:
     ts: float
     # HUD manual entries skip the NT stop on submit; Python owns the stop.
     attach_stop: bool = True
-    take_profit: float | None = None
 
 
 class ExecutionEngine:
@@ -95,31 +93,20 @@ class ExecutionEngine:
                 return "REJECT_RISK"
             action = "BUY" if intent.side == Side.LONG else "SELL"
             self.risk.note_order(intent.ts)
-            tick = 0.25
-            try:
-                tick = max(float(getattr(self.cfg, "TICK_SIZE", 0.25) or 0.25), 0.25)
-            except Exception:
-                tick = 0.25
             stop_loss = None
             if bool(getattr(intent, "attach_stop", True)):
-                stop_loss = round(round(float(intent.stop) / tick) * tick, 2)
-            take_profit = None
-            raw_tp = getattr(intent, "take_profit", None)
-            if raw_tp is not None:
+                tick = 0.25
                 try:
-                    tp = float(raw_tp)
-                except (TypeError, ValueError):
-                    tp = 0.0
-                if tp > 0:
-                    take_profit = round(round(tp / tick) * tick, 2)
-            kwargs = {
-                "quantity": intent.quantity,
-                "stop_loss": stop_loss,
-                "reason": intent.reason,
-            }
-            if take_profit is not None:
-                kwargs["take_profit"] = take_profit
-            self.sink.send_order(action, **kwargs)
+                    tick = max(float(getattr(self.cfg, "TICK_SIZE", 0.25) or 0.25), 0.25)
+                except Exception:
+                    tick = 0.25
+                stop_loss = round(round(float(intent.stop) / tick) * tick, 2)
+            self.sink.send_order(
+                action,
+                quantity=intent.quantity,
+                stop_loss=stop_loss,
+                reason=intent.reason,
+            )
             self.orders_submitted += 1
             self.last_action = "LIVE_EXECUTE"
             return "LIVE_EXECUTE"

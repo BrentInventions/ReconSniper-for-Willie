@@ -32,8 +32,6 @@ from mark2.ema_strategy import (
     red_reached_under_white_and_blue,
     red_reached_white_and_blue,
     manage_ema_hold,
-    mfe_losing_momentum,
-    mfe_lock_active,
     profit_keep_lock_price,
     profit_keep_usd,
     grow_keep_usd,
@@ -197,9 +195,9 @@ def test_sniper_long_requires_red_through_white_and_blue() -> None:
     )
     assert stack_is_bearish(bull) is False
     cfg.EMA_LONG_REQUIRES_BEARISH = True
-    assert long_sniper_reason(bull, cfg, bias="BEARISH") == ""
+    assert long_sniper_reason(bull, cfg, bias="BEARISH") == "STACK_STALE"
     cfg.EMA_LONG_REQUIRES_BEARISH = False
-    assert long_sniper_reason(bull, cfg, bias="BEARISH") == ""
+    assert long_sniper_reason(bull, cfg, bias="BEARISH") == "STACK_STALE"
 
 
 def test_sniper_completes_when_red_later_clears_blue() -> None:
@@ -271,7 +269,7 @@ def test_bull_long_does_not_refire_on_same_stack() -> None:
     )
     assert stack_is_bullish(leftover)
     assert red_clears_white_and_blue(leftover) is False
-    assert rsi_bull_long_reason([], leftover, cfg) == ""
+    assert rsi_bull_long_reason([], leftover, cfg) == "STACK_STALE"
 
 
 def test_rsi_bull_long_blocked_when_stack_not_bullish() -> None:
@@ -599,7 +597,7 @@ def test_sniper_still_takes_when_punch_flips_20_50() -> None:
     assert red_clears_white_and_blue(stack) is True
     assert stack.ema20 > stack.ema50
     assert stack.prev20 < stack.prev50
-    assert long_sniper_reason(stack, cfg, bias="BEARISH") == ""
+    assert long_sniper_reason(stack, cfg, bias="BEARISH") == "TIGHT"
 
 
 def test_white_cross_far_from_blue_without_trajectory_stays_ignored() -> None:
@@ -745,7 +743,6 @@ def test_nt_ema_matches_chart_sma_seed() -> None:
 
 def test_sniper_takes_when_white_flips_blue_at_the_knot() -> None:
     cfg = Mark2Config()
-    cfg.ENABLE_EMA_QUALITY_FILTER = False
     stack = EmaStack(
         ema9=111.2,
         ema20=110.4,
@@ -757,7 +754,7 @@ def test_sniper_takes_when_white_flips_blue_at_the_knot() -> None:
     assert lines_intersecting(stack, 8.0, cfg) is True
     assert red_above_white_and_blue(stack) is True
     assert float(stack.prev20) > float(stack.prev50)
-    assert long_sniper_reason(stack, cfg, bias="BEARISH", atr=8.0) == ""
+    assert long_sniper_reason(stack, cfg, bias="BEARISH", atr=8.0) == "STACK_STALE"
 
 
 def test_bearish_knot_buys_when_red_reaches_both() -> None:
@@ -790,7 +787,7 @@ def test_sniper_still_takes_after_red_already_cleared_both() -> None:
     assert red_clears_white_and_blue(stack) is False
     assert red_above_white_and_blue(stack) is True
     assert float(stack.ema20) < float(stack.ema50)
-    assert long_sniper_reason(stack, cfg, bias="BEARISH") == ""
+    assert long_sniper_reason(stack, cfg, bias="BEARISH") == "STACK_STALE"
 
 
 def test_sniper_does_not_long_when_red_is_falling() -> None:
@@ -849,7 +846,7 @@ def test_leftover_bull_stack_after_runner_is_not_a_long() -> None:
     )
     assert stack_is_bullish(already) is True
     assert red_rising(already) is True
-    assert rsi_bull_long_reason([], already, cfg) == ""
+    assert rsi_bull_long_reason([], already, cfg) == "STACK_STALE"
 
 
 def test_dump_bounce_is_not_a_knot_long() -> None:
@@ -1010,7 +1007,7 @@ def test_live_scan_waits_if_completed_red_not_through_blue() -> None:
     assert eng._ema_watch == "WAIT_CLOSE"
 
 
-def test_engine_takes_leftover_bull_stack_once() -> None:
+def test_engine_blocks_stale_bull_stack() -> None:
     eng = _ema_engine()
     stack = EmaStack(
         ema9=29372.5,
@@ -1022,7 +1019,8 @@ def test_engine_takes_leftover_bull_stack_once() -> None:
     )
     eng.completed_bars[-1]["close"] = 29373.0
     eng._ema_try_arm_signal(Side.LONG, stack, allow_entry=True, why="EMA_RSI_LONG")
-    assert eng.paper is not None or eng._ema_pending_side != Side.NONE or eng._ema_pullback is not None
+    assert eng.paper is None
+    assert eng._ema_pending_side == Side.NONE
 
 
 def test_live_scan_does_not_fire_bull_stack() -> None:
@@ -1073,7 +1071,6 @@ def test_engine_blocks_falling_red_long() -> None:
 
 def test_buy_when_intersection_hits_while_bearish_and_red_through_both() -> None:
     cfg = Mark2Config()
-    cfg.ENABLE_EMA_QUALITY_FILTER = False
     stack = EmaStack(
         ema9=112.0,
         ema20=110.0,
@@ -1122,7 +1119,6 @@ def test_seed_bars_do_not_arm_ema_entry() -> None:
     cfg.ENABLE_EMA_STRATEGY = True
     cfg.ALLOW_LEGACY_ENTRIES = False
     cfg.MARK2_ENABLED = True
-    cfg.ACCOUNT_RISK_PROFILE = "OFF"
     eng = Mark2Engine(cfg)
     for b in _bars_down_then_up():
         eng.on_bar_close(b, seed=True)
@@ -1388,7 +1384,6 @@ def test_runner_ignores_intrabar_wick() -> None:
     cfg.TRAIL_PROFIT_KEEP = 0.0
     cfg.DOLLAR_LOCK_1_TRIGGER = 99999.0
     cfg.TIP_TRAIL_ARM_USD = 99999.0
-    cfg.MFE_LOCK_ARM_USD = 99999.0
     cfg.ENABLE_GROW_MODE = False
     cfg.ENABLE_RUNNER_TRAIL = True
     cfg.RUNNER_TRIGGER_ATR = 1.5
@@ -1580,7 +1575,6 @@ def test_sniper_probation_does_not_trail() -> None:
 def test_eighty_dollars_does_nothing() -> None:
     cfg = Mark2Config()
     cfg.POINT_VALUE = 2.0
-    assert profit_keep_usd(50.0, cfg) == 0.0
     assert profit_keep_usd(80.0, cfg) == 0.0
     assert profit_keep_usd(99.0, cfg) == 0.0
     trade = PaperTrade(
@@ -1738,7 +1732,6 @@ def test_structure_exit_only_after_runner() -> None:
     cfg.RUNNER_STRUCTURE_EXIT = True
     cfg.TIP_TRAIL_ARM_USD = 99999.0
     cfg.DOLLAR_LOCK_1_TRIGGER = 99999.0
-    cfg.MFE_LOCK_ARM_USD = 99999.0
     cfg.ENABLE_GROW_MODE = False
     dead = dict(ema9=28980.0, ema20=29010.0, ema50=29020.0)
     probation = PaperTrade(
@@ -1897,10 +1890,9 @@ def test_opposite_cross_exit_is_off() -> None:
         ema_trade_state="CONFIRMED_TREND",
         atr_at_entry=10.0,
     )
-    done, why, _st = manage_ema_hold(trade, price=108.5, exit_armed=True, cfg=cfg)
+    done, why, _st = manage_ema_hold(trade, price=102.0, exit_armed=True, cfg=cfg)
     assert done is False
     assert why == ""
-    assert abs(trade.stop - 85.0) < 1e-9
 
 
 def test_opposite_cross_does_not_flatten_probation() -> None:
@@ -1921,13 +1913,10 @@ def test_opposite_cross_does_not_flatten_probation() -> None:
         ema_trade_state="PROBATION",
         atr_at_entry=13.11,
     )
-    done, why, _st = manage_ema_hold(trade, price=29359.5, exit_armed=True, cfg=cfg)
-    assert done is False
-    assert why == ""
-    assert trade.ema_trade_state == "PROBATION"
     done, why, _st = manage_ema_hold(trade, price=29339.75, exit_armed=True, cfg=cfg)
     assert done is False
     assert why == ""
+    assert trade.ema_trade_state == "PROBATION"
 
 
 def test_pullback_zone_long_and_short() -> None:
@@ -1959,7 +1948,6 @@ def test_live_warmup_ignores_first_cross() -> None:
     cfg.ENABLE_EMA_STRATEGY = True
     cfg.ALLOW_LEGACY_ENTRIES = False
     cfg.MARK2_ENABLED = True
-    cfg.ACCOUNT_RISK_PROFILE = "OFF"
     eng = Mark2Engine(cfg)
     bars = _bars_down_then_up()
     for b in bars:
@@ -2036,7 +2024,6 @@ def _ema_engine(**kwargs) -> "Mark2Engine":
     cfg.ENABLE_PULLBACK_ENTRY = True
     cfg.PULLBACK_ENTRY_ON_BAR_CLOSE = True
     cfg.MAX_PULLBACK_WAIT_BARS = 10
-    cfg.ACCOUNT_RISK_PROFILE = "OFF"
     for k, v in kwargs.items():
         setattr(cfg, k, v)
     eng = Mark2Engine(cfg)
@@ -2231,7 +2218,8 @@ def test_close_cross_is_immediate() -> None:
     stack = EmaStack(ema9=29301.0, ema20=29300.0, ema50=29290.0, prev9=29299.0, prev20=29300.0, prev50=29290.0)
     eng.completed_bars[-1]["close"] = 29312.0
     eng._ema_try_arm_signal(Side.LONG, stack, allow_entry=True)
-    assert eng.paper is not None or eng._ema_pending_side != Side.NONE or eng._ema_pullback is not None
+    assert eng.paper is None
+    assert eng._ema_pending_side == Side.NONE
 
 
 def test_pullback_reject_when_disabled() -> None:
@@ -2372,7 +2360,7 @@ def test_pullback_expires() -> None:
     assert eng._ema_pullback is None
 
 
-def test_high_momentum_does_not_lock_70_until_runner() -> None:
+def test_probation_is_hard_stop_only() -> None:
     cfg = Mark2Config()
     trade = PaperTrade(
         side=Side.LONG,
@@ -2390,17 +2378,6 @@ def test_high_momentum_does_not_lock_70_until_runner() -> None:
     assert done is False
     assert trade.ema_trade_state == "PROBATION"
     assert trade.stop == 85.0
-    assert mfe_losing_momentum(trade, price=110.0, cfg=cfg) is False
-    assert mfe_lock_active(trade, price=110.0, state="PROBATION", cfg=cfg) is False
-    done, why, _st = manage_ema_hold(trade, price=108.0, exit_armed=False, cfg=cfg)
-    assert done is False
-    assert mfe_losing_momentum(trade, price=108.0, cfg=cfg) is False
-    assert mfe_lock_active(trade, price=108.0, state="PROBATION", cfg=cfg) is False
-    assert abs(trade.stop - 85.0) < 1e-9
-    done, why, _st = manage_ema_hold(trade, price=106.5, exit_armed=False, cfg=cfg)
-    assert done is False
-    assert why == ""
-    assert trade.ema_trade_state == "PROBATION"
 
 
 def test_confirmed_protects_at_one_r() -> None:
@@ -2450,34 +2427,6 @@ def test_runner_ratchets_70_percent_of_mfe() -> None:
     done, why, _st = manage_ema_hold(trade, price=142.5, exit_armed=False, cfg=cfg)
     assert done is True
     assert why == "TIP_TRAIL"
-
-
-def test_runner_25pct_dip_holds_above_70_percent_floor() -> None:
-    cfg = Mark2Config()
-    cfg.POINT_VALUE = 2.0
-    cfg.ENABLE_GROW_MODE = False
-    cfg.RUNNER_STRUCTURE_EXIT = False
-    trade = PaperTrade(
-        side=Side.LONG,
-        entry=100.0,
-        entry_ts=1.0,
-        stop=85.0,
-        target=0.0,
-        peak=100.0,
-        trough=100.0,
-        hard_stop=85.0,
-        ema_strategy=True,
-        atr_at_entry=10.0,
-    )
-    manage_ema_hold(trade, price=140.0, exit_armed=False, cfg=cfg)
-    assert trade.ema_trade_state == "RUNNER"
-    done, why, _st = manage_ema_hold(
-        trade, price=130.0, exit_armed=False, cfg=cfg, completed_anchor=138.0
-    )
-    assert done is False
-    assert why == ""
-    assert abs(trade.giveback_floor_pts - 28.0) < 1e-9
-    assert abs(trade.stop - 128.0) < 1e-9
 
 
 def test_structure_exits_after_confirmed_9_20_flip() -> None:
@@ -2657,10 +2606,8 @@ def test_tip_trail_starts_7_5_and_widens_then_stalls_in() -> None:
     assert stalled + 1e-9 >= 3.0
 
 
-def test_recon_sniper_keeps_grow_mode_off() -> None:
+def test_willie_factory_keeps_grow_mode_off() -> None:
     cfg = Mark2Config()
-    assert cfg.PRODUCT_NAME == "RECON SNIPER"
-    assert cfg.PRODUCT_ENGINE == "ReconSniper"
     assert cfg.ENABLE_GROW_MODE is False
     assert grow_mode_active(cfg, 250.0) is False
 
@@ -2702,18 +2649,6 @@ def test_grow_does_not_bank_while_making_highs() -> None:
     assert why == ""
 
 
-def test_grow_mode_toggle_wires_enable_flag() -> None:
-    cfg = Mark2Config()
-    assert cfg.ENABLE_GROW_MODE is False
-    apply_toggles(cfg, {"grow_mode": True})
-    assert cfg.ENABLE_GROW_MODE is True
-    assert snapshot(cfg)["toggles"]["grow_mode"] is True
-    apply_toggles(cfg, {"grow_mode": False})
-    assert cfg.ENABLE_GROW_MODE is False
-    assert snapshot(cfg)["toggles"]["grow_mode"] is False
-    assert grow_mode_active(cfg, 250.0) is False
-
-
 def test_grow_stall_banks_50_plus() -> None:
     cfg = Mark2Config()
     cfg.POINT_VALUE = 2.0
@@ -2740,73 +2675,6 @@ def test_grow_stall_banks_50_plus() -> None:
     assert done is True
     assert why == "GROW_BANK"
     assert _open_usd_check(trade, 128.5, cfg) >= 50.0
-
-
-def test_grow_mode_off_stall_does_not_flatten() -> None:
-    """Same $50+ stall that GROW_BANKs when on must hold when the toggle is off."""
-    cfg = Mark2Config()
-    cfg.POINT_VALUE = 2.0
-    cfg.ENABLE_GROW_MODE = False
-    cfg.RUNNER_STRUCTURE_EXIT = False
-    trade = PaperTrade(
-        side=Side.LONG,
-        entry=100.0,
-        entry_ts=1.0,
-        stop=85.0,
-        target=0.0,
-        peak=100.0,
-        trough=100.0,
-        hard_stop=85.0,
-        ema_strategy=True,
-        atr_at_entry=10.0,
-    )
-    manage_ema_hold(trade, price=130.0, exit_armed=False, cfg=cfg, completed_anchor=130.0, account_equity=250.0)
-    manage_ema_hold(trade, price=129.0, exit_armed=False, cfg=cfg, completed_anchor=129.4, account_equity=250.0)
-    manage_ema_hold(trade, price=128.8, exit_armed=False, cfg=cfg, completed_anchor=129.1, account_equity=250.0)
-    done, why, _st = manage_ema_hold(
-        trade, price=128.5, exit_armed=False, cfg=cfg, completed_anchor=128.8, account_equity=250.0
-    )
-    assert done is False
-    assert why != "GROW_BANK"
-    grow_keep = grow_keep_usd(_open_usd_check(trade, 130.0, cfg), cfg)
-    grow_lock = 100.0 + grow_keep / 2.0
-    assert abs(float(trade.stop) - grow_lock) > 1e-6
-
-
-def test_grow_mode_off_allows_runner_tip_trail() -> None:
-    """Off skip the $50 bank so $100 tip trail can arm and hold through a stall."""
-    cfg = Mark2Config()
-    cfg.POINT_VALUE = 2.0
-    cfg.ENABLE_GROW_MODE = False
-    cfg.RUNNER_STRUCTURE_EXIT = False
-    trade = PaperTrade(
-        side=Side.LONG,
-        entry=20000.0,
-        entry_ts=1.0,
-        stop=19970.0,
-        target=0.0,
-        peak=20000.0,
-        trough=20000.0,
-        hard_stop=19970.0,
-        ema_strategy=True,
-        atr_at_entry=30.0,
-    )
-    manage_ema_hold(
-        trade, price=20050.0, exit_armed=False, cfg=cfg, completed_anchor=20050.0, account_equity=250.0
-    )
-    manage_ema_hold(
-        trade, price=20048.0, exit_armed=False, cfg=cfg, completed_anchor=20048.5, account_equity=250.0
-    )
-    manage_ema_hold(
-        trade, price=20047.0, exit_armed=False, cfg=cfg, completed_anchor=20048.0, account_equity=250.0
-    )
-    done, why, _st = manage_ema_hold(
-        trade, price=20046.0, exit_armed=False, cfg=cfg, completed_anchor=20047.2, account_equity=250.0
-    )
-    assert done is False
-    assert why != "GROW_BANK"
-    assert abs(runner_tip_trail_pts(100.0, 0, cfg) - 7.5) < 1e-9
-    assert float(getattr(trade, "tip_trail_pts", 0) or 0) + 1e-9 >= 7.5
 
 
 def _open_usd_check(trade, price: float, cfg: Mark2Config) -> float:
@@ -2987,7 +2855,6 @@ def test_100_usd_arms_7_5_tip_trail_even_if_confirmed() -> None:
 
 def test_tight_through_both_is_not_an_intersection() -> None:
     cfg = Mark2Config()
-    cfg.ENABLE_EMA_QUALITY_FILTER = False
     knot = EmaStack(
         ema9=100.6,
         ema20=100.1,
@@ -2998,7 +2865,7 @@ def test_tight_through_both_is_not_an_intersection() -> None:
     )
     assert red_clears_white_and_blue(knot) is True
     assert red_crosses_blue(knot) == Side.LONG
-    assert long_sniper_reason(knot, cfg, atr=12.0) == ""
+    assert long_sniper_reason(knot, cfg, atr=12.0) == "TIGHT"
 
 
 def test_spread_9_20_then_9_50_is_the_long() -> None:
@@ -3027,9 +2894,8 @@ def test_spread_9_20_then_9_50_is_the_long() -> None:
     assert intersection_status(go, cfg, 10.0).fire is True
 
 
-def test_already_through_blue_white_recross_can_fire() -> None:
+def test_already_through_blue_white_recross_is_stale() -> None:
     cfg = Mark2Config()
-    cfg.ENABLE_EMA_QUALITY_FILTER = False
     recross = EmaStack(
         ema9=111.0,
         ema20=110.0,
@@ -3039,7 +2905,7 @@ def test_already_through_blue_white_recross_can_fire() -> None:
         prev50=99.8,
     )
     assert red_clears_white_and_blue(recross) is True
-    assert long_sniper_reason(recross, cfg, atr=10.0) == ""
+    assert long_sniper_reason(recross, cfg, atr=10.0) == "STACK_STALE"
 
 
 def test_separation_ok_uses_atr_when_present() -> None:

@@ -2,9 +2,7 @@
 
 Standalone event-driven MNQ engine for Willie. **Not TradeChampion.** Own HUD, own NinjaTrader bridge on port **5564**.
 
-Chart overlay is **lines only** (gold entry, red stop, green target, purple trail). No price/bias/STOP/ENTRY/TARGET words on the chart.
-
-Optional **8TCM** pack (Settings, default **OFF**) runs next to EMA 9/20/50. One live trade at a time — neither system interrupts the other. With 8TCM on, both packs use the 8TCM hold: key-level green target, then purple trail. 8TCM shorts stay off unless you flip that checkbox.
+Chart overlay is **lines only** (gold entry, red stop, green target). No price/bias text on the chart.
 
 HUD **GOAL** (±$25) and **CLOCK** (±15m) control the daily hunt. With goal on, entry gates open so the bot can trade; clock pressure tightens as time runs down. **RESET PNL** zeros the session and restarts the clock.
 
@@ -29,8 +27,8 @@ Optional **Recon tip trail** (HUD GATES — default **OFF**): arms at **$15 tota
    `Documents\NinjaTrader 8\bin\Custom\Strategies\`
 4. NinjaScript Editor → **F5**
 5. Add **ReconSniperBridge** to the MNQ chart (Sim101 or live). Leave TradeChampion on **5560** alone
-6. Double-click `START-RECON-SNIPER.bat` — same launcher as Brent’s desktop: HUD in the background plus the 8TCM board window
-7. Optional: double-click `CREATE-RECON-SNIPER-SHORTCUT.bat` to put **ReconSniper** on the Desktop
+6. Double-click `START-RECON-SNIPER.bat`
+7. Optional: double-click `CREATE-DESKTOP-SHORTCUT.bat` to put **Recon Sniper** on the Desktop
 
 Default mode is **OBSERVE_ONLY** (simulated runner on the HUD, no NT orders). Switch to Paper or Live from Control.
 

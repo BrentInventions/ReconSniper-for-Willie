@@ -1,4 +1,4 @@
-Recon Sniper for Willie — drag this folder onto his PC.
+﻿Recon Sniper for Willie — drag this folder onto his PC.
 
 1. Copy this whole folder (or unzip ReconSniper-for-Willie.zip).
 2. Double-click FIRST-RUN.bat once (installs Python HUD pieces).
@@ -7,9 +7,7 @@ Recon Sniper for Willie — drag this folder onto his PC.
    then NinjaScript Editor → F5. Add ReconSniperBridge to the MNQ chart. Port 5564.
    Chart stays lines only. Do not add chart text.
 4. Double-click START-RECON-SNIPER.bat
-   — HUD opens with no extra console
-   — 8TCM board opens in its own window
-5. Optional: CREATE-RECON-SNIPER-SHORTCUT.bat puts ReconSniper on his desktop.
+5. Optional: CREATE-DESKTOP-SHORTCUT.bat puts Recon Sniper on his desktop.
 
-8TCM is off until he turns it on in Settings. EMA 9/20/50 stays on.
+This build is EMA 9/20/50 only. No 8TCM board or pack.
 Need Python 3 on the PC (same as before). Leave TradeChampion on 5560 alone.

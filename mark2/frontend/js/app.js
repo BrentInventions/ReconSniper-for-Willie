@@ -129,8 +129,6 @@ function plogRow(t, isNew) {
 }
 
 let tuningSyncing = false;
-let strategySyncing = false;
-let strategyHoldUntil = 0;
 let tuneDebounce = null;
 
 const INT_GATES = new Set(["build_ticks", "chop_build_ticks"]);
@@ -190,7 +188,6 @@ function renderTuning(tuning) {
   const emaOn = !!tg.ema_strategy;
   if ($("toggle-trending")) $("toggle-trending").checked = !!tg.require_trending;
   if ($("toggle-chaotic")) $("toggle-chaotic").checked = !!tg.chaotic_bank;
-  if ($("toggle-grow-mode")) $("toggle-grow-mode").checked = !!tg.grow_mode;
   if ($("toggle-experimental")) $("toggle-experimental").checked = !!tg.experimental_profile;
   if ($("toggle-candles")) $("toggle-candles").checked = !!tg.candle_align;
   if ($("toggle-book-patterns")) $("toggle-book-patterns").checked = bookOn;
@@ -225,49 +222,6 @@ function renderTuning(tuning) {
     if (lab) lab.classList.toggle("is-book-locked", emaOn);
   }
   tuningSyncing = false;
-}
-
-function formatStrategyValue(key, val) {
-  const n = Number(val);
-  if (!Number.isFinite(n)) return "—";
-  if (key === "contracts" || key === "daily_goal" || key === "reentry_cooldown" || key === "mfe_keep_pct" || key === "tip_trail_arm_usd" || key === "breakout_413_max_stop" || key === "tcm8_ema_period" || key === "tcm8_trend_slope_lookback" || key === "tcm8_consolidation_lookback" || key === "tcm8_swing_strength") {
-    return String(Math.round(n));
-  }
-  return n.toFixed(2);
-}
-
-function applyStrategyDom(st) {
-  if (!st) return;
-  document.querySelectorAll("[data-strategy]").forEach((el) => {
-    const key = el.dataset.strategy;
-    if (key && key in st) el.checked = !!st[key];
-  });
-  document.querySelectorAll("[data-strategy-num]").forEach((knob) => {
-    const key = knob.dataset.strategyNum;
-    const slider = knob.querySelector('input[type="range"]');
-    const out = knob.querySelector("output");
-    if (!slider || !key) return;
-    slider.min = knob.dataset.min || slider.min;
-    slider.max = knob.dataset.max || slider.max;
-    slider.step = knob.dataset.step || slider.step;
-    if (key in st) slider.value = String(st[key]);
-    if (out) out.textContent = formatStrategyValue(key, slider.value);
-  });
-  const risk = $("strategy-risk");
-  if (risk && st.account_risk) risk.value = String(st.account_risk);
-  const mode413 = $("strategy-413-mode");
-  if (mode413 && st.breakout_413_mode) mode413.value = String(st.breakout_413_mode);
-}
-
-function renderStrategy(st) {
-  if (!st || strategySyncing) return;
-  if (Date.now() < strategyHoldUntil) return;
-  strategySyncing = true;
-  try {
-    applyStrategyDom(st);
-  } finally {
-    strategySyncing = false;
-  }
 }
 
 function scheduleTune(fn) {
@@ -319,12 +273,8 @@ function startMotes(canvas) {
   requestAnimationFrame(frame);
 }
 
-let _lastStatePaint = "";
 function renderStates(current) {
   const track = $("state-track");
-  if (!track) return;
-  if (current === _lastStatePaint && track.childElementCount) return;
-  _lastStatePaint = current;
   track.innerHTML = STATES.map((s) => {
     const now = s === current ? " now" : "";
     const label = s.replaceAll("_", " ");
@@ -348,18 +298,13 @@ function renderSide(prefix, side) {
   cls(wrap, "down", side.velocity < 0);
 }
 
-let _lastLogHtml = null;
 function renderLog(rows) {
   const html = [...rows].reverse().map((r) => {
     let kind = "wait";
     if (r.decision === "OBSERVE_ONLY" || r.decision === "OBSERVE_EXECUTE") kind = "observe";
-    else if (r.decision === "CLOSE") kind = "close";
     else if (String(r.decision).includes("EXECUTE") || r.decision === "MANAGE") kind = "enter";
-    else if (r.decision === "REJECT" || r.decision === "NO_FIRE") kind = "reject";
+    else if (r.decision === "REJECT") kind = "reject";
     else if (r.decision === "EXIT") kind = "exit";
-    if (r.note) {
-      return `<div class="log-line ${kind}">${r.note}</div>`;
-    }
     const exitRaw = r.exitReason || r.exit_reason || "";
     let why;
     if (r.decision === "EXIT" && exitRaw) {
@@ -374,40 +319,10 @@ function renderLog(rows) {
     return `<div class="log-line ${kind}">${r.direction || "—"} ${r.event || ""} · ${why}${triggerBit} · c${fmt(r.confidence, 0)} o${fmt(r.opportunity, 0)} x${fmt(r.extension, 0)}</div>`;
   }).join("");
   const fallback = `<div class="log-line wait">awaiting events…</div>`;
-  const next = html || fallback;
-  if (next === _lastLogHtml) return;
-  _lastLogHtml = next;
-  for (const id of ["log", "log-tab", "log-stats"]) {
+  for (const id of ["log", "log-tab"]) {
     const box = $(id);
-    if (box) box.innerHTML = next;
+    if (box) box.innerHTML = html || fallback;
   }
-}
-
-function moneyPlain(n) {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return "—";
-  return (v < 0 ? "-$" : "$") + Math.abs(v).toFixed(2);
-}
-
-function renderAccountRisk(s) {
-  const ar = s.accountRisk || {};
-  const box = $("acct-risk");
-  const badge = $("acct-risk-badge");
-  const state = String(ar.state || "ARMED");
-  const emergency = !!ar.emergency || ["DAILY_LOCKOUT", "EQUITY_KILL", "CONNECTION_FAILSAFE"].includes(state);
-  if (box) box.classList.toggle("emergency", emergency);
-  if (badge) {
-    badge.textContent = state;
-    badge.classList.toggle("hot", emergency);
-  }
-  if ($("acct-profile")) $("acct-profile").textContent = ar.profile || "—";
-  if ($("acct-equity")) $("acct-equity").textContent = moneyPlain(ar.equity);
-  if ($("acct-daily")) $("acct-daily").textContent = moneyPlain(ar.dailyPnl);
-  if ($("acct-daily-lim")) $("acct-daily-lim").textContent = moneyPlain(ar.dailyLossLimit);
-  if ($("acct-trade-risk")) $("acct-trade-risk").textContent = moneyPlain(ar.tradeRisk);
-  if ($("acct-allowed")) $("acct-allowed").textContent = moneyPlain(ar.allowedRisk);
-  if ($("acct-qty")) $("acct-qty").textContent = `${ar.contracts || 1} / ${ar.maxContracts || 1}`;
-  if ($("acct-risk-state")) $("acct-risk-state").textContent = `Risk State: ${state}`;
 }
 
 let _lastBookFlashKey = "";
@@ -438,29 +353,6 @@ async function api(name, ...args) {
   return bridge[name](...args);
 }
 
-let _armBusy = false;
-window.reconArm = async function reconArm(e) {
-  if (e) {
-    try { e.preventDefault(); e.stopPropagation(); } catch (_) {}
-  }
-  if (_armBusy) return false;
-  _armBusy = true;
-  try {
-    const s = await api("snapshot");
-    if (s && s.enabled) await api("disarm");
-    else {
-      const out = await api("arm");
-      if (out == null) await api("set_enabled", true);
-    }
-    tick();
-  } catch (err) {
-    console.error(err);
-  } finally {
-    setTimeout(() => { _armBusy = false; }, 400);
-  }
-  return false;
-};
-
 const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
 
 const MILESTONES = [
@@ -473,18 +365,18 @@ const MILESTONES = [
 ];
 
 const BURST = {
-  live: { colors: ["#e10600", "#ffb4b0", "#16e06a"], count: 46, speed: 4.2 },
-  confirmed: { colors: ["#ff3b2f", "#ffb4b0", "#ffffff"], count: 70, speed: 5.4 },
-  runner: { colors: ["#e10600", "#ff3b2f", "#7a0c10"], count: 90, speed: 6.2 },
+  live: { colors: ["#00f0ff", "#e8fcff", "#00ff88"], count: 46, speed: 4.2 },
+  confirmed: { colors: ["#00f0ff", "#7af6ff", "#ffffff"], count: 70, speed: 5.4 },
+  runner: { colors: ["#ff00aa", "#ff7ad4", "#8800ff"], count: 90, speed: 6.2 },
   lock100: { colors: ["#00ff88", "#9affc2", "#ffe600"], count: 88, speed: 5.8 },
   lock150: { colors: ["#ffe600", "#ffd54a", "#fff4b0"], count: 100, speed: 6.4 },
-  lock250: { colors: ["#ff7828", "#ffb36a", "#ffe600", "#e10600"], count: 140, speed: 7.4 },
-  bull: { colors: ["#e10600", "#ff3b2f", "#ffb4b0"], count: 64, speed: 4.8 },
-  climb: { colors: ["#00ff88", "#ffe600", "#e10600"], count: 22, speed: 3.4 },
+  lock250: { colors: ["#ff7828", "#ffb36a", "#ffe600", "#ff00aa"], count: 140, speed: 7.4 },
+  bull: { colors: ["#b46bff", "#d2a6ff", "#00f0ff"], count: 64, speed: 4.8 },
+  climb: { colors: ["#00ff88", "#ffe600", "#00f0ff"], count: 22, speed: 3.4 },
   "exit-bank": { colors: ["#00ff88", "#9affc2", "#ffe600"], count: 120, speed: 7.2 },
   "exit-struct": { colors: ["#ffe600", "#ffd54a", "#ff7828"], count: 110, speed: 6.8 },
-  "exit-compress": { colors: ["#ff7828", "#ffb36a", "#e10600"], count: 130, speed: 7.4 },
-  "exit-protect": { colors: ["#e10600", "#ffb4b0", "#ffffff"], count: 100, speed: 6.4 },
+  "exit-compress": { colors: ["#ff7828", "#ffb36a", "#ff00aa"], count: 130, speed: 7.4 },
+  "exit-protect": { colors: ["#00f0ff", "#7af6ff", "#ffffff"], count: 100, speed: 6.4 },
   "exit-stop": { colors: ["#ff1238", "#ff8aa3", "#ffe600"], count: 90, speed: 6.0 },
 };
 
@@ -530,7 +422,6 @@ const fx = {
 
 function fxCanvas(el) {
   if (!el) return null;
-  el.style.pointerEvents = "none";
   const ctx = el.getContext("2d", { alpha: true });
   const box = { el, ctx, w: 0, h: 0, dpr: 1, fit: null };
   const fit = () => {
@@ -825,27 +716,6 @@ function renderExitHold(s) {
     if ($("exit-give-val")) $("exit-give-val").textContent = "0%";
     if ($("exit-spr-val")) $("exit-spr-val").textContent = "—";
     const lx = s.lastExit;
-    const t8 = s.tcm8 || {};
-    if (t8.enabled) {
-      const armLine = enabled
-        ? "BOT ARMED · WAITING FOR 8TCM ENTRY"
-        : "DISARMED · CLICK ARM ON CONTROL TO TAKE TRADES";
-      if (lx && lx.reason) {
-        const info = formatExitReason(lx.reason);
-        bullets.innerHTML = `
-          <li class="${enabled ? "ok" : "hot"}">${armLine}</li>
-          <li class="ok">LAST EXIT · ${escapeHtml(info.display)} ${money(Number(lx.pnl) || 0)}</li>
-          <li>${escapeHtml(String(lx.side || "—"))} · ${escapeHtml(lx.clock || "—")}</li>
-          <li>CLASSIC TP AT NEXT KEY LEVEL · STOP NEVER WIDENS</li>`;
-      } else {
-        bullets.innerHTML = `
-          <li class="${enabled ? "ok" : "hot"}">${armLine}</li>
-          <li>STRUCTURE TREND · RETRACE TO EMA8 · TEST · CLOSE REJECT</li>
-          <li>STOP PROTECTS THE EMA8 REJECTION · NEVER WIDENS</li>
-          <li>PRIMARY TARGET AT THE NEXT KEY LEVEL · OPTIONAL RUNNER AFTER</li>`;
-      }
-      return;
-    }
     const growOn = !!s.growMode;
     const armLine = enabled
       ? "BOT ARMED · WAITING FOR EMA ENTRY"
@@ -956,22 +826,6 @@ function renderExitHold(s) {
           : "SPREAD · WAITING FOR EXPANSION";
   const growOn = !!locks.growMode;
   const stallBars = Number(locks.stallBars) || 0;
-  if (s.tcm8 && s.tcm8.enabled) {
-    const tcm8Fill = String(trade.tag || "").startsWith("8TCM");
-    if (tcm8Fill) {
-      bullets.innerHTML = `
-        <li class="ok">8TCM HOLD · STOP ${fmt(trade.stop, 2)} · TP ${fmt(trade.target, 2)}</li>
-        <li>HARD STOP NEVER WIDENS</li>
-        <li>CLASSIC TP AT THE NEXT KEY LEVEL</li>
-        <li>NO EMA TIP TRAIL · NO 9/20 STRUCTURE EXIT</li>`;
-    } else {
-      bullets.innerHTML = `
-        <li class="hot">THIS FILL IS NOT 8TCM · ${escapeHtml(String(trade.tag || "UNKNOWN").replaceAll("_", " "))}</li>
-        <li>8TCM PACK IS ON · LEGACY / EMA HOLD RULES DO NOT APPLY</li>
-        <li>FLATTEN · NEXT ENTRY MUST BE 8TCM_LONG OR 8TCM_SHORT</li>`;
-    }
-    return;
-  }
   const keepLine = classic
     ? ""
     : growOn
@@ -993,123 +847,18 @@ function renderExitHold(s) {
     <li>${classic ? "10-5 · STOP FIRST · THEN TRAIL THE TIP" : (growOn ? "GROW BANK + COMPRESSION + STRUCTURE" : "COMPRESSION + STRUCTURE + TIP TRAIL")}</li>`;
 }
 
-function fmtLvl(v) {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? fmt(n, 2) : "—";
-}
-
-function renderBarrierScout(s, bar) {
-  const card = $("scout-card");
-  const badge = $("scout-badge");
-  const call = $("scout-call");
-  const list = $("scout-bullets");
-  const ixList = $("ix-status");
-  const tag = card.querySelector(".scout-tag");
-  if (tag) tag.textContent = "MOMENTUM BARRIERS";
-  const state = String(bar.state || "").toUpperCase();
-  card.classList.toggle("is-take", state.includes("BREAKOUT"));
-  card.classList.toggle("is-override", state.includes("TESTING") || state.includes("APPROACH"));
-  card.classList.toggle("is-reject", state.includes("REJECTION") || bar.roomOk === false);
-  card.classList.toggle("is-short", !!(bar.active && String(bar.active.kind || "").includes("LOW")));
-  if (badge) badge.textContent = String(bar.badge || "MAP");
-  if (call) call.textContent = String(bar.call || "FLAT · MAPPING SESSION LEVELS");
-  const longZ = bar.long || {};
-  const shortZ = bar.short || {};
-  if (ixList) {
-    const longTxt = longZ.found
-      ? `${longZ.label || "LONG"} ${fmtLvl(longZ.price)} · ${fmt(Math.abs(Number(longZ.distancePoints) || 0), 1)} PTS`
-      : "NONE";
-    const shortTxt = shortZ.found
-      ? `${shortZ.label || "SHORT"} ${fmtLvl(shortZ.price)} · ${fmt(Math.abs(Number(shortZ.distancePoints) || 0), 1)} PTS`
-      : "NONE";
-    ixList.innerHTML = `
-      <li class="ok">PDH · ${escapeHtml(fmtLvl(bar.pdh))}</li>
-      <li class="ok">PDL · ${escapeHtml(fmtLvl(bar.pdl))}</li>
-      <li class="${longZ.roomOk === false ? "hot" : (longZ.found ? "ok" : "wait")}">NEXT LONG · ${escapeHtml(longTxt)}</li>
-      <li class="${shortZ.roomOk === false ? "hot" : (shortZ.found ? "ok" : "wait")}">NEXT SHORT · ${escapeHtml(shortTxt)}</li>`;
-  }
-  const bullets = Array.isArray(bar.bullets) && bar.bullets.length
-    ? bar.bullets
-    : ["AI EXIT ON · TRAIL TIGHTENS AT THE NEXT LEVEL"];
-  list.innerHTML = bullets.slice(0, 5).map((b) => `<li>${escapeHtml(String(b))}</li>`).join("");
-}
-
-function renderTcm8Scout(s, t8) {
-  const card = $("scout-card");
-  const badge = $("scout-badge");
-  const call = $("scout-call");
-  const list = $("scout-bullets");
-  const ixList = $("ix-status");
-  const tag = card.querySelector(".scout-tag");
-  if (tag) tag.textContent = "8TCM";
-  const reason = String(t8.reason || "").toUpperCase();
-  card.classList.toggle("is-take", !!t8.accept);
-      card.classList.toggle("is-override", /RETRACE|REJECTION|EMA8_TEST|TESTING/i.test(String(t8.state || "")));
-  card.classList.toggle("is-reject", reason.startsWith("REJECT"));
-  card.classList.toggle("is-short", String(t8.direction || "") === "SHORT");
-  if (badge) badge.textContent = String(t8.badge || "8TCM");
-  if (call) call.textContent = String(t8.call || t8.next || "8TCM · WAITING FOR TREND");
-  const steps = Array.isArray(t8.checklist) ? t8.checklist : [];
-  if (ixList && steps.length) {
-    ixList.innerHTML = steps.map((st) => {
-      const status = String(st.status || "wait");
-      const cls = status === "pass" ? "ok" : (status === "fail" || status === "hold" ? (status === "hold" ? "ok" : "hot") : "wait");
-      const mark = status === "pass" ? "PASS" : status === "fail" ? "FAIL" : status === "hold" ? "HOLD" : "WAIT";
-      const detail = st.detail ? ` · ${st.detail}` : "";
-      return `<li class="${cls}">${escapeHtml(String(st.label || ""))} · ${mark}${escapeHtml(detail)}</li>`;
-    }).join("");
-  } else if (ixList) {
-    const nextBar = t8.barrier
-      ? `${t8.barrier} ${fmtLvl(t8.barrierPrice)}`
-      : "NONE";
-    ixList.innerHTML = `
-      <li class="${t8.htf1h === "BULLISH" ? "ok" : (t8.htf1h === "BEARISH" ? "hot" : "wait")}">1H · ${escapeHtml(String(t8.htf1h || "—"))}</li>
-      <li class="${t8.range === "TRENDING" ? "ok" : "wait"}">CHOP · ${escapeHtml(String(t8.range || "—"))}</li>
-      <li class="${t8.pullback ? "ok" : "wait"}">EMA8 · ${escapeHtml(t8.ema8 ? fmt(t8.ema8, 2) : "—")} ${t8.pullback ? "PULLBACK" : ""}</li>
-      <li class="${t8.barrier ? "ok" : "wait"}">NEXT · ${escapeHtml(nextBar)}</li>`;
-  }
-  const bullets = Array.isArray(t8.bullets) && t8.bullets.length
-    ? t8.bullets
-    : ["FIRES ONLY ON A COMPLETED 1m CLOSE · ALL LINES MUST PASS"];
-  list.innerHTML = bullets.slice(0, 5).map((b) => `<li>${escapeHtml(String(b))}</li>`).join("");
-}
-
 function renderScout(s) {
   const card = $("scout-card");
   const badge = $("scout-badge");
   const call = $("scout-call");
   const list = $("scout-bullets");
   if (!card || !call || !list) return;
-  const view = $("view-trade");
-  const stage = $("stage");
-  const t8 = s.tcm8 || {};
-  const tcmOn = !!t8.enabled;
-  const bar = s.barriers || {};
-  const on = !!bar.enabled;
-  if (view) {
-    view.classList.toggle("is-tcm8", tcmOn);
-    view.classList.toggle("is-barriers", on && !tcmOn);
-  }
-  if (stage) {
-    stage.classList.toggle("is-tcm8", tcmOn);
-    stage.classList.toggle("is-barriers", on && !tcmOn);
-  }
-  if (tcmOn) {
-    renderTcm8Scout(s, t8);
-    return;
-  }
-  if (on) {
-    renderBarrierScout(s, bar);
-    return;
-  }
-  card.classList.remove("is-reject");
-  const tag = card.querySelector(".scout-tag");
-  if (tag) tag.textContent = "INTERSECTION";
   const sc = s.scout || {};
   const action = String(sc.action || "HOLD").toUpperCase();
   const side = String(sc.side || "").toUpperCase();
+  const miss = !!sc.miss;
   card.classList.toggle("is-take", action === "TAKE");
-  card.classList.toggle("is-override", action === "OVERRIDE");
+  card.classList.toggle("is-override", action === "OVERRIDE" || miss);
   card.classList.toggle("is-short", side === "SHORT");
   if (badge) {
     badge.textContent = action === "OVERRIDE" ? "OVERRIDE" : action === "TAKE" ? "TAKE" : "WATCH";
@@ -1126,8 +875,6 @@ function renderScout(s) {
     call.textContent = "PAUSE · 5S BETWEEN TRADES";
   } else if (sc.why === "WAIT_CROSS") {
     call.textContent = "HOLD · WAITING FOR 9/50 CONFIRM";
-  } else if (sc.why) {
-    call.textContent = `HOLD · ${String(sc.why).replaceAll("_", " ")}`;
   } else {
     call.textContent = "FLAT · SPREAD THEN 9/20 THEN 9/50";
   }
@@ -1180,8 +927,8 @@ function livePnlColor(pnl) {
   const v = Number(pnl) || 0;
   if (v < 0) return mixHex("#ffb3be", "#ff1238", Math.min(1, Math.abs(v) / 70));
   if (v < 20) return mixHex("#e8fcff", "#00ff88", v / 20);
-  if (v < 80) return mixHex("#00ff88", "#e10600", (v - 20) / 60);
-  if (v < 100) return mixHex("#e10600", "#ff3b2f", (v - 80) / 20);
+  if (v < 80) return mixHex("#00ff88", "#00f0ff", (v - 20) / 60);
+  if (v < 100) return mixHex("#00f0ff", "#ff7ad4", (v - 80) / 20);
   if (v < 150) return mixHex("#7dffb3", "#ffe27a", (v - 100) / 50);
   if (v < 250) return mixHex("#ffe27a", "#ff9a3c", (v - 150) / 100);
   return mixHex("#ff9a3c", "#ff2d6a", Math.min(1, (v - 250) / 250));
@@ -1358,7 +1105,7 @@ function renderMoney(s) {
   // leftover sim unrealized) over the open trade sitting on the HUD.
   if (s.trade && s.pnlLog?.fromNt !== true) {
     session = botTotal;
-  } else if (Math.abs(session) < 0.005 && Math.abs(botTotal) > 0.005) {
+  } else if (s.trade && Math.abs(session) < 0.005 && Math.abs(botTotal) > 0.005) {
     session = botTotal;
   }
   const live = s.trade ? (Number(s.trade.pnl) || 0) : session;
@@ -1418,12 +1165,9 @@ function renderEmaLamps(s) {
   }
 }
 
-let _lastProductName = "";
-let _lastLicenseChip = "";
 function paintBrand(s) {
   const name = String(s.product || "").trim();
-  if (name && name !== _lastProductName) {
-    _lastProductName = name;
+  if (name) {
     document.title = name;
     const wm = $("wordmark");
     if (wm) {
@@ -1434,31 +1178,10 @@ function paintBrand(s) {
         wm.textContent = name;
       }
     }
-    const ticker = document.querySelector(".dev-ticker");
-    if (ticker) ticker.setAttribute("aria-label", name);
-    document.querySelectorAll(".dev-ticker-chunk").forEach((chunk) => {
-      const tag = chunk.querySelector(".dev-tag");
-      if (tag) tag.textContent = name;
-    });
   }
   if (s.kickerLong && $("kicker-long")) $("kicker-long").textContent = s.kickerLong;
   if (s.kickerShort && $("kicker-short")) $("kicker-short").textContent = s.kickerShort;
   if (s.bridgeName && $("hint-bridge")) $("hint-bridge").textContent = s.bridgeName;
-  const lic = s.license || {};
-  const hint = $("hint-license");
-  if (hint) {
-    const st = String(lic.status || "").toUpperCase();
-    const msg = String(lic.message || "").toUpperCase();
-    let text = "LICENSE: REQUIRED";
-    if (lic.valid) text = "LICENSE: AUTHORIZED";
-    else if (st.includes("NO SERVER") || msg.includes("NO SERVER")) text = "LICENSE: NO SERVER";
-    const chip = `${text}|${lic.valid ? "1" : "0"}`;
-    if (chip !== _lastLicenseChip) {
-      _lastLicenseChip = chip;
-      hint.textContent = text;
-      hint.classList.toggle("lic-bad", !lic.valid);
-    }
-  }
 }
 
 function renderRsi(s) {
@@ -1550,15 +1273,8 @@ function paint(s) {
   if (s.experimentalEnabled) {
     $("chip-mode").textContent += " · EXP";
   }
-  if (s.tcm8 && s.tcm8.enabled) {
-    $("chip-mode").textContent += " · 8TCM";
-  } else if (s.barriers && s.barriers.enabled) {
-    $("chip-mode").textContent += s.barriers.exclusive ? " · BARRIERS" : " · BARRIERS+";
-  } else if (s.emaStrategyEnabled) {
+  if (s.emaStrategyEnabled) {
     $("chip-mode").textContent += " · EMA";
-  }
-  if (s.growModeEnabled) {
-    $("chip-mode").textContent += " · GROW";
   }
   $("chip-mode").className = "chip " + (armed ? "on" : "warn");
   $("chip-link").textContent = s.connected ? "LINK" : "OFFLINE";
@@ -1571,28 +1287,17 @@ function paint(s) {
   const chipTrade = $("chip-trade");
   if (trade) {
     const side = String(trade.side || "").toUpperCase();
-    const tcm8Fill = trade.tag && String(trade.tag).startsWith("8TCM");
     const tag = trade.chaoticBank
       ? "QUICK BANK"
-      : (tcm8Fill
-        ? "8TCM"
-        : (trade.tag
-          ? String(trade.tag).replaceAll("_", " ")
-          : trade.runner
-            ? "RUNNER"
-            : "IN TRADE"));
+      : trade.runner
+        ? "RUNNER"
+        : "IN TRADE";
     chipTrade.textContent = `${side} ${tag}`;
     chipTrade.className = "chip on " + (side === "SHORT" ? "bad" : "ok");
     banner.className = "trade-banner live " + (side === "SHORT" ? "short" : "long");
     banner.innerHTML = `<div class="type">IN ${side} ${tag} · ${money(trade.pnl)}</div>
       <div class="kv"><span>ENTRY <b>${fmt(trade.entry, 2)}</b></span><span>PNL <b>${money(trade.pnl)}</b></span>
-      <span>MFE <b>${fmt(trade.mfe, 1)} pts</b></span><span>MAE <b>${fmt(trade.mae, 1)} pts</b></span>${
-        s.barriers && s.barriers.enabled && s.barriers.active && s.barriers.active.found
-          ? `<span>NEXT <b>${escapeHtml(String(s.barriers.active.label || "LEVEL"))} ${fmt(s.barriers.active.price, 2)}</b></span>`
-          : (trade.tag && String(trade.tag).startsWith("8TCM") && trade.target
-            ? `<span>8TCM TP <b>${fmt(trade.target, 2)}</b></span>`
-            : "")
-      }</div>`;
+      <span>MFE <b>${fmt(trade.mfe, 1)} pts</b></span><span>MAE <b>${fmt(trade.mae, 1)} pts</b></span></div>`;
   } else {
     const ev = s.event || {};
     const why = s.lastReject || "";
@@ -1603,15 +1308,7 @@ function paint(s) {
       regime === "CHOPPY" ||
       (regime === "CHAOTIC" && !chaoticOn) ||
       why === "REJECT_REGIME";
-    const tcm8On = !!(s.tcm8 && s.tcm8.enabled);
-    if (tcm8On && !trade) {
-      const t8 = s.tcm8;
-      chipTrade.textContent = t8.accept ? "8TCM READY" : (String(t8.badge || "8TCM"));
-      chipTrade.className = "chip " + (t8.accept ? "on" : "warn");
-      banner.className = "trade-banner watch";
-      banner.innerHTML = `<div class="type">${escapeHtml(String(t8.call || t8.next || "8TCM · WAIT"))}</div>
-        <div class="kv"><span>1H <b>${escapeHtml(String(t8.htf1h || "—"))}</b></span><span>${escapeHtml(String(t8.range || "—"))}</span></div>`;
-    } else if (regime === "CHAOTIC" && chaoticOn && !trade) {
+    if (regime === "CHAOTIC" && chaoticOn && !trade) {
       chipTrade.textContent = "CHAOTIC BANK";
       chipTrade.className = "chip warn";
       banner.className = "trade-banner watch";
@@ -1638,12 +1335,6 @@ function paint(s) {
       banner.className = "trade-banner idle last-exit";
       banner.innerHTML = `<div class="type">LAST EXIT · ${escapeHtml(exitInfo.display)} ${money(lxPnl)}</div>
         <div class="kv"><span>${escapeHtml(String(lx.side || "—"))} <b>${escapeHtml(lx.clock || "—")}</b></span></div>`;
-    } else if (s.barriers && s.barriers.enabled) {
-      chipTrade.textContent = s.barriers.badge || "BARRIERS";
-      chipTrade.className = "chip " + (s.barriers.roomOk ? "on" : "warn");
-      banner.className = "trade-banner watch";
-      banner.innerHTML = `<div class="type">MOMENTUM BARRIERS · ${escapeHtml(String(s.barriers.badge || "MAP"))}</div>
-        <div class="kv"><span>${escapeHtml(String(s.barriers.call || "MAPPING LEVELS"))}</span></div>`;
     } else {
       chipTrade.textContent = "FLAT";
       chipTrade.className = "chip";
@@ -1687,11 +1378,7 @@ function paint(s) {
   $("event-card").innerHTML = ev.type
     ? `<div class="type">${ev.direction} · ${ev.type.replaceAll("_", " ")}</div>
        <div class="kv"><span>ID <b>#${ev.id}</b></span><span>PEAK <b>${fmt(ev.peakConfidence, 0)}</b></span></div>`
-    : (s.tcm8 && s.tcm8.enabled
-      ? `<div class="idle">8TCM · STRUCTURE TREND · EMA8 RETRACE · REJECTION</div>`
-      : (s.barriers && s.barriers.enabled
-      ? `<div class="idle">BARRIER TREND · 9/20 ALIGN + ROOM TO NEXT LEVEL</div>`
-      : `<div class="idle">NO ACTIVE EVENT</div>`));
+    : `<div class="idle">NO ACTIVE EVENT</div>`;
   const st = s.stats || {};
   const statIds = ["st-trades", "st-pnl", "st-exp", "st-pf", "st-dd", "st-mfe"];
   for (const id of statIds) {
@@ -1716,27 +1403,14 @@ function paint(s) {
   }
   renderPnlLog(s);
   renderLog(s.log || []);
-  renderAccountRisk(s);
-  const licOk = !s.license || !!s.license.valid;
   cls($("btn-enable"), "on", s.enabled);
   $("btn-enable").textContent = s.enabled ? "ARMED" : "ARM";
-  $("btn-enable").title = !licOk
-    ? "RECON LICENSE REQUIRED — TRADING DISABLED"
-    : s.enabled
-      ? "ARMED — click to disarm"
-      : "Disarmed — click to arm. No trades until this flashes.";
-  $("btn-enable").classList.toggle("lic-locked", !licOk);
+  $("btn-enable").title = s.enabled ? "ARMED — click to disarm" : "Disarmed — click to arm. No trades until this flashes."
   const emaBtn = $("btn-ema-strategy");
   if (emaBtn) {
     const emaOn = !!(s.emaStrategyEnabled || (s.entryTuning && s.entryTuning.toggles && s.entryTuning.toggles.ema_strategy));
     cls(emaBtn, "on", emaOn);
     emaBtn.textContent = emaOn ? "EMA 9/20 ON" : "EMA 9/20";
-  }
-  const growBtn = $("btn-grow-mode");
-  if (growBtn) {
-    const growOn = !!(s.growModeEnabled || (s.entryTuning && s.entryTuning.toggles && s.entryTuning.toggles.grow_mode));
-    cls(growBtn, "on", growOn);
-    growBtn.textContent = growOn ? "GROW BANK ON" : "GROW BANK";
   }
   if ($("qty-val")) $("qty-val").textContent = String(s.contracts || 1);
   if ($("qty-bank")) {
@@ -1773,7 +1447,6 @@ function paint(s) {
   if ($("btn-buy")) $("btn-buy").disabled = inTrade;
   if ($("btn-sell")) $("btn-sell").disabled = inTrade;
   renderTuning(s.entryTuning);
-  renderStrategy(s.strategy || {});
 }
 
 async function tick() {
@@ -1799,23 +1472,21 @@ function bindTabs() {
 }
 
 function bind() {
-  const armBtn = $("btn-enable");
-  if (armBtn) {
-    armBtn.addEventListener("pointerdown", (e) => { window.reconArm(e); }, true);
-  }
+  $("btn-enable")?.addEventListener("click", async () => {
+    let s = null;
+    try {
+      s = await api("snapshot");
+    } catch (err) {
+      console.error(err);
+    }
+    await api("set_enabled", !(s && s.enabled));
+    tick();
+  });
   if ($("btn-ema-strategy")) {
     $("btn-ema-strategy").addEventListener("click", async () => {
       const s = await api("snapshot");
       const on = !!(s && s.emaStrategyEnabled);
       await api("set_entry_toggles", { ema_strategy: !on });
-      tick();
-    });
-  }
-  if ($("btn-grow-mode")) {
-    $("btn-grow-mode").addEventListener("click", async () => {
-      const s = await api("snapshot");
-      const on = !!(s && s.growModeEnabled);
-      await api("set_entry_toggles", { grow_mode: !on });
       tick();
     });
   }
@@ -1848,7 +1519,7 @@ function bind() {
       const r = await api("sell");
       if (r && r.ok === false) {
         const hint = $("hint-port")?.parentElement;
-        if (hint) hint.textContent = `SHORT blocked: ${r.error || "REJECT"}`;
+        if (hint) hint.textContent = `SELL blocked: ${r.error || "REJECT"}`;
       }
       tick();
     });
@@ -1943,7 +1614,6 @@ function bind() {
   const tuneToggles = [
     ["toggle-trending", "require_trending"],
     ["toggle-chaotic", "chaotic_bank"],
-    ["toggle-grow-mode", "grow_mode"],
     ["toggle-experimental", "experimental_profile"],
     ["toggle-candles", "candle_align"],
     ["toggle-book-patterns", "book_patterns"],
@@ -1964,61 +1634,11 @@ function bind() {
     await api("reset_entry_tuning");
     tick();
   });
-
-  document.querySelectorAll("[data-strategy]").forEach((el) => {
-    el.addEventListener("change", async () => {
-      const key = el.dataset.strategy;
-      if (!key) return;
-      const wanted = !!el.checked;
-      strategySyncing = true;
-      strategyHoldUntil = Date.now() + 2000;
-      try {
-        const out = await api("set_strategy", { [key]: wanted });
-        if (out) applyStrategyDom(out);
-        el.checked = wanted;
-      } catch (err) {
-        console.error(err);
-        el.checked = !wanted;
-      } finally {
-        strategySyncing = false;
-      }
-    });
-  });
-  document.querySelectorAll("[data-strategy-num]").forEach((knob) => {
-    const slider = knob.querySelector('input[type="range"]');
-    const key = knob.dataset.strategyNum;
-    const out = knob.querySelector("output");
-    if (!slider || !key) return;
-    slider.addEventListener("input", () => {
-      if (strategySyncing) return;
-      if (out) out.textContent = formatStrategyValue(key, slider.value);
-      scheduleTune(async () => {
-        await api("set_strategy", { [key]: Number(slider.value) });
-        tick();
-      });
-    });
-  });
-  $("strategy-risk")?.addEventListener("change", async () => {
-    if (strategySyncing) return;
-    await api("set_strategy", { account_risk: $("strategy-risk").value });
-    tick();
-  });
-  $("strategy-413-mode")?.addEventListener("change", async () => {
-    if (strategySyncing) return;
-    await api("set_strategy", { breakout_413_mode: $("strategy-413-mode").value });
-    tick();
-  });
 }
 
-for (const id of ["fx-canvas", "motes"]) {
-  const el = $(id);
-  if (!el) continue;
-  el.style.pointerEvents = "none";
-  el.style.display = "none";
-  el.width = 1;
-  el.height = 1;
-}
-fx.dock = null;
+startMotes($("motes"));
+fx.screen = fxCanvas($("fx-canvas"));
+fx.dock = fxCanvas($("pnl-fx"));
 requestAnimationFrame(tickFx);
 bindTabs();
 bind();
@@ -2094,8 +1714,8 @@ function runMilestoneDemo() {
         locks: {
           giveback: 0.30,
           compress: 0.35,
-          floorPts: step.mfe > 0 ? Math.round(step.mfe * 0.7 * 10) / 10 : 0,
-          floorPx: step.mfe > 0 ? 29000 + step.mfe * 0.7 : 0,
+          floorPts: step.state === "RUNNER" ? Math.round(step.mfe * 0.7 * 10) / 10 : 0,
+          floorPx: step.state === "RUNNER" ? 29000 + step.mfe * 0.7 : 0,
           spread: step.state === "RUNNER" ? 18 : 8,
           spreadNow: 12,
           entrySpread: 6,
@@ -2109,7 +1729,7 @@ function runMilestoneDemo() {
           openPts: step.price - 29000,
           giveUsed: 0,
           compressUsed: 0,
-          threat: step.mfe > 0 ? "70% MFE FLOOR" : step.state === "CONFIRMED" ? "PROTECT / STRUCTURE" : "HARD STOP ONLY",
+          threat: step.state === "RUNNER" ? "70% MFE FLOOR" : step.state === "CONFIRMED" ? "PROTECT / STRUCTURE" : "HARD STOP ONLY",
         },
       },
     });
@@ -2145,7 +1765,7 @@ function runExitDemo() {
   const hold = (price, state, extra = {}) => {
     const mfe = extra.mfe ?? price - 29000;
     const open = extra.open ?? price - 29000;
-    const floor = mfe > 0 ? mfe * 0.7 : 0;
+    const floor = state === "RUNNER" ? mfe * 0.7 : 0;
     return {
       price,
       sessionPnl: open * 2,
@@ -2165,7 +1785,7 @@ function runExitDemo() {
         atrAtEntry: 20,
         peakPnl: mfe * 2,
         locks: {
-          giveback: 0.30,
+          giveback: 0.3,
           compress: 0.35,
           floorPts: floor,
           floorPx: floor ? 29000 + floor : 0,
@@ -2182,7 +1802,7 @@ function runExitDemo() {
           openPts: open,
           giveUsed: extra.giveUsed ?? 0,
           compressUsed: extra.compressUsed ?? 0,
-          threat: extra.threat || (floor > 0 ? "70% MFE FLOOR" : state === "CONFIRMED" ? "PROTECT / STRUCTURE" : "HARD STOP ONLY"),
+          threat: extra.threat || (state === "RUNNER" ? "70% MFE FLOOR" : state === "CONFIRMED" ? "PROTECT / STRUCTURE" : "HARD STOP ONLY"),
         },
       },
     };
@@ -2215,4 +1835,3 @@ function runExitDemo() {
   };
   play();
 }
-

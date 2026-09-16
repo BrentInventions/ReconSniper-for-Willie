@@ -171,8 +171,6 @@ def apply_toggles(cfg: Mark2Config, toggles: dict[str, Any]) -> None:
         cfg.ENABLE_EXHAUSTION_FILTER = bool(toggles["exhaustion_filter"])
     if "ema_strategy" in toggles:
         cfg.ENABLE_EMA_STRATEGY = bool(toggles["ema_strategy"])
-    if "grow_mode" in toggles:
-        cfg.ENABLE_GROW_MODE = bool(toggles["grow_mode"])
     # Book mode owns the gate set — keep conflicting filters off, RSI override on.
     if bool(getattr(cfg, "ENABLE_BOOK_PATTERNS", False)):
         enforce_book_mode_gates(cfg)
@@ -246,7 +244,6 @@ def reset_to_defaults(cfg: Mark2Config) -> dict[str, Any]:
     cfg.ENABLE_BOOK_PATTERNS = False
     cfg.ENABLE_EXHAUSTION_FILTER = False
     cfg.ENABLE_EMA_STRATEGY = True
-    cfg.ENABLE_GROW_MODE = False
     return snapshot(cfg)
 
 
@@ -289,7 +286,6 @@ def snapshot(cfg: Mark2Config) -> dict[str, Any]:
             "book_patterns": bool(getattr(cfg, "ENABLE_BOOK_PATTERNS", False)),
             "exhaustion_filter": bool(getattr(cfg, "ENABLE_EXHAUSTION_FILTER", False)),
             "ema_strategy": bool(getattr(cfg, "ENABLE_EMA_STRATEGY", False)),
-            "grow_mode": bool(getattr(cfg, "ENABLE_GROW_MODE", False)),
         },
         "limits": {
             k: {"min": v[0], "max": v[1], "step": 1 if v[2] == "int" else 0.01}

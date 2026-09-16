@@ -74,24 +74,6 @@ class PaperTrade:
     ema9_warn: bool = False
     giveback_floor_pts: float = 0.0
     trail_ratchet_usd: float = 0.0
-    ai_exit_state: str = ""
-    ai_momentum_score: int = 0
-    ai_runner_floor: float = 0.0
-    ai_protect_floor: float = 0.0
-    ai_ema9: float = 0.0
-    ai_ema20: float = 0.0
-    ai_ema50: float = 0.0
-    ai_lower_high: bool = False
-    ai_lower_low: bool = False
-    ai_last_log_key: object | None = None
-    tcm8: bool = False
-    tcm8_hold: bool = False
-    tcm8_grade: str = ""
-    tcm8_rejection: str = ""
-    tcm8_target_r: float = 0.0
-    tcm8_barrier_type: str = ""
-    tcm8_primary_hit: bool = False
-    tcm8_runner: bool = False
 
 
 def goal_hunting(cfg: Mark2Config, *, goal_met: bool = False) -> bool:

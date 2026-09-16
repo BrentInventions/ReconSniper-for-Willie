@@ -22,10 +22,8 @@ def _cloud_synced(path: Path) -> bool:
 
 
 def local_app_log_path(name: str) -> Path:
-    from mark2.config import settings_app_name
-
     base = os.environ.get("LOCALAPPDATA") or os.environ.get("TEMP") or os.getcwd()
-    return Path(base) / settings_app_name() / "logs" / name
+    return Path(base) / "ReconSniper" / "logs" / name
 
 
 class AnalyticsLogger:

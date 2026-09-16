@@ -7,10 +7,3 @@ logs/
 *.jsonl
 .DS_Store
 Thumbs.db
-mark2_settings.json
-recon.license
-*.pem
-.recon-licensing/
-mark2_email.json
-.env
-.env.*

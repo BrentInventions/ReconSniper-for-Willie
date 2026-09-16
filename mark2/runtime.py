@@ -147,22 +147,6 @@ class Mark2Runtime:
                     )
                 )
             return
-        if t in ("bar_htf", "seed_bar_htf"):
-            self.engine.risk.connected = True
-            minutes = int(msg.get("timeframe") or msg.get("minutes") or 0)
-            if minutes <= 0:
-                return
-            bar = {
-                "time": str(msg.get("time") or ""),
-                "open": float(msg.get("open") or 0),
-                "high": float(msg.get("high") or 0),
-                "low": float(msg.get("low") or 0),
-                "close": float(msg.get("close") or 0),
-                "volume": float(msg.get("volume") or 0),
-            }
-            seed = t == "seed_bar_htf" or bool(msg.get("seed"))
-            self.engine.on_htf_bar(bar, minutes=minutes, seed=seed)
-            return
         if t == "seed_done":
             self._seed_done = True
             self.engine.clear_ema_pending()

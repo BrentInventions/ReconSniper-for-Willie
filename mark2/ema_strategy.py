@@ -184,15 +184,6 @@ def stack_is_bullish(stack: EmaStack) -> bool:
     return stack.ema9 > stack.ema20 > stack.ema50
 
 
-def leftover_long_allowed(cfg: Mark2Config | None) -> bool:
-    return cfg is None or bool(getattr(cfg, "EMA_LEFTOVER_LONG", True))
-
-
-def leftover_stacked_long(stack: EmaStack) -> bool:
-    """Already through blue last bar and still stacked — not a fresh 9/50 punch."""
-    return red_above_white_and_blue(stack) and float(stack.prev9) > float(stack.prev50)
-
-
 def red_above_white_and_blue(stack: EmaStack) -> bool:
     """Red is stacked above both slower averages."""
     return _red_above_both(stack.ema9, stack.ema20, stack.ema50)
@@ -410,263 +401,7 @@ def _status_meters(stack: EmaStack, atr: float) -> IntersectionStatus:
     )
 
 
-QUALITY_REJECT_CODES = (
-    "REJECT_EMA_COMPRESSION",
-    "REJECT_9_20_GAP_TOO_SMALL",
-    "REJECT_TOTAL_SPREAD_TOO_SMALL",
-    "REJECT_EMA9_NOT_RISING",
-    "REJECT_EMA20_NOT_RISING",
-    "REJECT_EMA50_FALLING_TOO_FAST",
-    "REJECT_SPREAD_NOT_EXPANDING",
-    "REJECT_PRICE_BELOW_STRUCTURE",
-)
-
-
-@dataclass(frozen=True)
-class LongQualityReport:
-    accept: bool
-    reason: str
-    ema9: float
-    ema20: float
-    ema50: float
-    atr: float
-    gap_9_20_atr: float
-    gap_20_50_atr: float
-    gap_9_50_atr: float
-    total_spread_atr: float
-    slope9: float
-    slope20: float
-    slope50: float
-    expanding: bool
-    knot: bool
-    bullish_align: bool
-    price: float | None = None
-
-    def log_line(self) -> str:
-        decision = "ACCEPT" if self.accept else "REJECT"
-        px = "NA" if self.price is None else f"{self.price:.2f}"
-        return (
-            f"EMA QUALITY LONG {decision} {self.reason}  "
-            f"EMA9:{self.ema9:.2f}  EMA20:{self.ema20:.2f}  EMA50:{self.ema50:.2f}  "
-            f"ATR:{self.atr:.2f}  Price:{px}  "
-            f"gap9/20:{self.gap_9_20_atr:.3f}  gap20/50:{self.gap_20_50_atr:.3f}  "
-            f"gap9/50:{self.gap_9_50_atr:.3f}  spread:{self.total_spread_atr:.3f}  "
-            f"slope9:{self.slope9:.3f}  slope20:{self.slope20:.3f}  slope50:{self.slope50:.3f}  "
-            f"expanding:{'Y' if self.expanding else 'N'}  knot:{'Y' if self.knot else 'N'}  "
-            f"bullish:{'Y' if self.bullish_align else 'N'}"
-        )
-
-
-_last_quality_log: tuple | None = None
-
-
-def _atr_unit(atr: float) -> float:
-    return max(float(atr), 1e-9)
-
-
-def _signed_gap_atr(left: float, right: float, atr: float) -> float:
-    return (float(left) - float(right)) / _atr_unit(atr)
-
-
-def _abs_gap_atr(left: float, right: float, atr: float) -> float:
-    return abs(float(left) - float(right)) / _atr_unit(atr)
-
-
-def _close_from_bars(bars: list[dict] | None) -> float | None:
-    if not bars:
-        return None
-    last = bars[-1] or {}
-    close = float(last.get("close") or 0)
-    return close if close > 0 else None
-
-
-def is_ema_compressed(stack: EmaStack, atr: float, cfg: Mark2Config | None = None) -> bool:
-    """True when 9/20/50 are knotted vs ATR. Reuses stack.cluster (max-min)."""
-    atr_v = float(atr)
-    if atr_v <= 1e-6:
-        return False
-    limit = 0.15
-    if cfg is not None:
-        limit = float(getattr(cfg, "EMA_COMPRESSION_ATR", 0.15) or 0.15)
-    return float(stack.cluster) / atr_v + 1e-12 < limit
-
-
-def is_bullish_ema_structure(stack: EmaStack) -> bool:
-    """Prefer Price path 9>20; do not require 20>50. 9 may already be over 50."""
-    if float(stack.ema9) <= float(stack.ema20):
-        return False
-    return True
-
-
-def is_bullish_slope_quality(
-    stack: EmaStack,
-    atr: float,
-    cfg: Mark2Config | None = None,
-) -> tuple[bool, str]:
-    """Slopes are ATR/bar from the existing prev/now EMA pair (no extra indicators)."""
-    atr_v = _atr_unit(atr)
-    slope9 = (float(stack.ema9) - float(stack.prev9)) / atr_v
-    slope20 = (float(stack.ema20) - float(stack.prev20)) / atr_v
-    slope50 = (float(stack.ema50) - float(stack.prev50)) / atr_v
-    min9 = 0.04
-    min20 = -0.03
-    max_neg50 = -0.08
-    if cfg is not None:
-        min9 = float(getattr(cfg, "MIN_EMA9_SLOPE", 0.04) or 0.0)
-        raw20 = getattr(cfg, "MIN_EMA20_SLOPE", -0.03)
-        min20 = float(-0.03 if raw20 is None else raw20)
-        raw50 = getattr(cfg, "MAX_NEGATIVE_EMA50_SLOPE", -0.08)
-        max_neg50 = float(-0.08 if raw50 is None else raw50)
-    if slope9 + 1e-12 < min9:
-        return False, "REJECT_EMA9_NOT_RISING"
-    if slope20 + 1e-12 < min20:
-        return False, "REJECT_EMA20_NOT_RISING"
-    if slope50 + 1e-12 < max_neg50:
-        return False, "REJECT_EMA50_FALLING_TOO_FAST"
-    return True, ""
-
-
-def is_ema_expanding_bullishly(
-    stack: EmaStack,
-    atr: float,
-    cfg: Mark2Config | None = None,
-    bars: list[dict] | None = None,
-) -> bool:
-    """9-20 gap opening. 20-50 is not required to fan. One tiny contraction is OK."""
-    atr_v = _atr_unit(atr)
-    tol = 0.02
-    look = 3
-    if cfg is not None:
-        tol = float(getattr(cfg, "EMA_SPREAD_EXPAND_TOLERANCE_ATR", 0.02) or 0.02)
-        look = max(2, int(getattr(cfg, "EMA_SPREAD_LOOKBACK_BARS", 3) or 3))
-    now_gap = (float(stack.ema9) - float(stack.ema20)) / atr_v
-    prev_gap = (float(stack.prev9) - float(stack.prev20)) / atr_v
-    series = read_ema_series(bars, cfg) if bars is not None else None
-    if series is None or len(series[0]) < 3:
-        return now_gap + 1e-12 >= prev_gap - tol
-    e9, e20, _e50 = series
-    start = max(0, len(e9) - look)
-    gaps = [(float(e9[i]) - float(e20[i])) / atr_v for i in range(start, len(e9))]
-    if len(gaps) < 2:
-        return now_gap + 1e-12 >= prev_gap - tol
-    drops = 0
-    for i in range(1, len(gaps)):
-        if gaps[i] + 1e-12 < gaps[i - 1] - tol:
-            drops += 1
-    net_up = gaps[-1] + 1e-12 >= gaps[0] - tol
-    return net_up or drops <= 1
-
-
-def evaluate_ema_long_quality(
-    stack: EmaStack,
-    cfg: Mark2Config | None = None,
-    atr: float = 0.0,
-    bars: list[dict] | None = None,
-    price: float | None = None,
-) -> LongQualityReport:
-    """Post-trigger long filter. Toggle off or missing ATR → accept (old behavior)."""
-    cfg = cfg or Mark2Config()
-    atr_v = float(atr)
-    px = price if price is not None else _close_from_bars(bars)
-    gap_920 = _signed_gap_atr(stack.ema9, stack.ema20, atr_v if atr_v > 1e-6 else 1.0)
-    gap_2050 = _abs_gap_atr(stack.ema20, stack.ema50, atr_v if atr_v > 1e-6 else 1.0)
-    gap_950 = _signed_gap_atr(stack.ema9, stack.ema50, atr_v if atr_v > 1e-6 else 1.0)
-    spread = float(stack.cluster) / _atr_unit(atr_v if atr_v > 1e-6 else 1.0)
-    slope9 = (float(stack.ema9) - float(stack.prev9)) / _atr_unit(atr_v if atr_v > 1e-6 else 1.0)
-    slope20 = (float(stack.ema20) - float(stack.prev20)) / _atr_unit(atr_v if atr_v > 1e-6 else 1.0)
-    slope50 = (float(stack.ema50) - float(stack.prev50)) / _atr_unit(atr_v if atr_v > 1e-6 else 1.0)
-    knot = is_ema_compressed(stack, atr_v, cfg) if atr_v > 1e-6 else False
-    expanding = is_ema_expanding_bullishly(stack, atr_v, cfg, bars=bars) if atr_v > 1e-6 else True
-    bullish = is_bullish_ema_structure(stack)
-
-    def _report(accept: bool, reason: str) -> LongQualityReport:
-        return LongQualityReport(
-            accept=accept,
-            reason=reason,
-            ema9=float(stack.ema9),
-            ema20=float(stack.ema20),
-            ema50=float(stack.ema50),
-            atr=atr_v,
-            gap_9_20_atr=gap_920,
-            gap_20_50_atr=gap_2050,
-            gap_9_50_atr=gap_950,
-            total_spread_atr=spread,
-            slope9=slope9,
-            slope20=slope20,
-            slope50=slope50,
-            expanding=expanding,
-            knot=knot,
-            bullish_align=bullish,
-            price=px,
-        )
-
-    if not bool(getattr(cfg, "ENABLE_EMA_QUALITY_FILTER", True)):
-        return _report(True, "FILTER_OFF")
-    if atr_v <= 1e-6:
-        return _report(True, "SKIP_NO_ATR")
-
-    min_920 = float(getattr(cfg, "MIN_9_20_GAP_ATR", 0.03) or 0.0)
-    min_2050 = float(getattr(cfg, "MIN_20_50_GAP_ATR", 0.0) or 0.0)
-    min_spread = float(getattr(cfg, "MIN_TOTAL_EMA_SPREAD_ATR", 0.10) or 0.0)
-    require_exp = bool(getattr(cfg, "REQUIRE_EXPANDING_SPREAD", True))
-
-    if knot:
-        return _report(False, "REJECT_EMA_COMPRESSION")
-    if gap_920 + 1e-12 < min_920:
-        return _report(False, "REJECT_9_20_GAP_TOO_SMALL")
-    if spread + 1e-12 < min_spread or (min_2050 > 0 and gap_2050 + 1e-12 < min_2050):
-        return _report(False, "REJECT_TOTAL_SPREAD_TOO_SMALL")
-    slope_ok, slope_why = is_bullish_slope_quality(stack, atr_v, cfg)
-    if not slope_ok:
-        return _report(False, slope_why)
-    if require_exp and not expanding:
-        return _report(False, "REJECT_SPREAD_NOT_EXPANDING")
-    if px is not None:
-        cluster_lo = min(float(stack.ema9), float(stack.ema20), float(stack.ema50))
-        cluster_hi = max(float(stack.ema9), float(stack.ema20), float(stack.ema50))
-        on_tape = (px + 2.0 * atr_v) >= cluster_lo and (px - 4.0 * atr_v) <= cluster_hi
-        if on_tape and px + 1e-12 < float(stack.ema20):
-            return _report(False, "REJECT_PRICE_BELOW_STRUCTURE")
-    if not bullish:
-        return _report(False, "REJECT_9_20_GAP_TOO_SMALL")
-    return _report(True, "ACCEPT")
-
-
-def _log_long_quality(report: LongQualityReport) -> None:
-    global _last_quality_log
-    key = (
-        round(report.ema9, 4),
-        round(report.ema20, 4),
-        round(report.ema50, 4),
-        report.reason,
-        report.accept,
-    )
-    if key == _last_quality_log:
-        return
-    _last_quality_log = key
-    print(report.log_line(), flush=True)
-
-
-def _apply_long_quality_gate(
-    st: IntersectionStatus,
-    stack: EmaStack,
-    cfg: Mark2Config | None,
-    atr: float,
-    bars: list[dict] | None = None,
-) -> IntersectionStatus:
-    """After the existing long trigger fires, quality may still block the entry."""
-    if not st.fire:
-        return st
-    report = evaluate_ema_long_quality(stack, cfg, atr, bars=bars)
-    if report.accept:
-        return st
-    st.fire = False
-    st.reject = report.reason
-    st.stage = "QUALITY"
-    return st
-
-
-def _classify_intersection_stack_core(
+def _classify_intersection_stack(
     stack: EmaStack,
     cfg: Mark2Config | None,
     atr: float,
@@ -691,25 +426,8 @@ def _classify_intersection_stack_core(
     ordered = float(stack.prev20) < float(stack.prev50) if long else float(stack.prev20) > float(stack.prev50)
     through_20 = float(stack.ema9) > float(stack.ema20) if long else float(stack.ema9) < float(stack.ema20)
 
-    if long and red_above_white_and_blue(stack):
-        leftover = leftover_stacked_long(stack)
-        if leftover and not leftover_long_allowed(cfg):
-            st.reject = "LEFTOVER_OFF"
-            st.stage = "STALE"
-            st.fire = False
-            return st
-        if leftover or bool(getattr(cfg, "EMA_LONG_SNIPER", True) if cfg else True):
-            if red_rising(stack):
-                st.fire = True
-                st.reject = ""
-                st.stage = "READY"
-                st.armed_920 = True
-                st.tight = False
-                return st
-            st.reject = "RED_FALLING"
-            st.stage = "STALE"
-            return st
-        st.reject = "SNIPER_OFF"
+    if long and red_above_white_and_blue(stack) and not st.cross_950:
+        st.reject = "STACK_STALE"
         st.stage = "STALE"
         return st
     if (not long) and red_below_white_and_blue(stack) and not st.cross_950:
@@ -722,19 +440,7 @@ def _classify_intersection_stack_core(
             float(stack.prev9) > float(stack.prev50) if long else float(stack.prev9) < float(stack.prev50)
         )
         if already_through_blue:
-            if long and leftover_stacked_long(stack) and not leftover_long_allowed(cfg):
-                st.reject = "LEFTOVER_OFF"
-                st.stage = "STALE"
-                st.fire = False
-                return st
-            if long and red_above_white_and_blue(stack) and red_rising(stack):
-                st.fire = True
-                st.reject = ""
-                st.stage = "READY"
-                st.armed_920 = True
-                st.tight = False
-                return st
-            st.reject = "RED_FALLING" if long and not red_rising(stack) else "NO_SNIPER"
+            st.reject = "STACK_STALE"
             st.stage = "STALE"
             return st
         st.armed_920 = st.sep_ok and ordered
@@ -761,19 +467,7 @@ def _classify_intersection_stack_core(
         st.stage = "WAIT_SEP"
         return st
     if long and float(stack.prev9) > float(stack.prev50):
-        if leftover_stacked_long(stack) and not leftover_long_allowed(cfg):
-            st.reject = "LEFTOVER_OFF"
-            st.stage = "STALE"
-            st.fire = False
-            return st
-        if red_above_white_and_blue(stack) and red_rising(stack):
-            st.fire = True
-            st.reject = ""
-            st.stage = "READY"
-            st.armed_920 = True
-            st.tight = False
-            return st
-        st.reject = "RED_FALLING" if not red_rising(stack) else "NO_SNIPER"
+        st.reject = "STACK_STALE"
         st.stage = "STALE"
         return st
     if (not long) and float(stack.prev9) < float(stack.prev50):
@@ -799,11 +493,6 @@ def _classify_intersection_stack_core(
         st.reject = "NOT_BULLISH"
         st.stage = "WAIT_9_50"
         return st
-    if long and cfg is not None and not bool(getattr(cfg, "EMA_LONG_SNIPER", True)):
-        st.reject = "SNIPER_OFF"
-        st.stage = "STALE"
-        st.fire = False
-        return st
     st.armed_920 = True
     st.fire = True
     st.reject = ""
@@ -812,21 +501,7 @@ def _classify_intersection_stack_core(
     return st
 
 
-def _classify_intersection_stack(
-    stack: EmaStack,
-    cfg: Mark2Config | None,
-    atr: float,
-    *,
-    long: bool,
-    bars: list[dict] | None = None,
-) -> IntersectionStatus:
-    st = _classify_intersection_stack_core(stack, cfg, atr, long=long)
-    if long:
-        return _apply_long_quality_gate(st, stack, cfg, atr, bars=bars)
-    return st
-
-
-def _classify_intersection_bars_core(
+def _classify_intersection_bars(
     stack: EmaStack,
     bars: list[dict],
     cfg: Mark2Config | None,
@@ -836,13 +511,13 @@ def _classify_intersection_bars_core(
 ) -> IntersectionStatus:
     series = read_ema_series(bars, cfg)
     if series is None:
-        return _classify_intersection_stack_core(stack, cfg, atr, long=long)
+        return _classify_intersection_stack(stack, cfg, atr, long=long)
     e9, e20, e50 = series
     end_i = len(e9) - 1
     max_bars = 16
     if cfg is not None:
         max_bars = max(2, int(getattr(cfg, "EMA_SETUP_MAX_BARS", 16) or 16))
-    st = _classify_intersection_stack_core(stack, cfg, atr, long=long)
+    st = _classify_intersection_stack(stack, cfg, atr, long=long)
     c20 = _last_920_index(e9, e20, long=long, end_i=end_i, max_bars=max_bars)
     if c20 is None:
         return st
@@ -850,23 +525,8 @@ def _classify_intersection_bars_core(
         return st
     # 9 must still have been on the far side of 50 when 9/20 printed.
     if long and e9[c20 - 1] > e50[c20 - 1]:
-        if leftover_stacked_long(stack) and not leftover_long_allowed(cfg):
-            st.cross_920 = True
-            st.reject = "LEFTOVER_OFF"
-            st.stage = "STALE"
-            st.fire = False
-            st.armed_920 = False
-            return st
-        if red_above_white_and_blue(stack) and red_rising(stack):
-            st.cross_920 = True
-            st.fire = True
-            st.reject = ""
-            st.stage = "READY"
-            st.armed_920 = True
-            st.tight = False
-            return st
         st.cross_920 = True
-        st.reject = "RED_FALLING" if not red_rising(stack) else "NO_SNIPER"
+        st.reject = "STACK_STALE"
         st.stage = "STALE"
         st.fire = False
         st.armed_920 = False
@@ -922,20 +582,6 @@ def _classify_intersection_bars_core(
     return st
 
 
-def _classify_intersection_bars(
-    stack: EmaStack,
-    bars: list[dict],
-    cfg: Mark2Config | None,
-    atr: float,
-    *,
-    long: bool,
-) -> IntersectionStatus:
-    st = _classify_intersection_bars_core(stack, bars, cfg, atr, long=long)
-    if long:
-        return _apply_long_quality_gate(st, stack, cfg, atr, bars=bars)
-    return st
-
-
 def intersection_status(
     stack: EmaStack | None,
     cfg: Mark2Config | None = None,
@@ -964,8 +610,8 @@ def intersection_status(
     return short_s
 
 
-def red_on_blue_trajectory(stack: EmaStack, atr: float = 0.0, cfg: Mark2Config | None = None, *, long: bool = True) -> bool:
-    """Red is through white, still on the far side of blue, and closing on blue.
+def red_on_blue_trajectory(stack: EmaStack, atr: float = 0.0, cfg: Mark2Config | None = None) -> bool:
+    """Red is through white, still under blue, and closing on blue.
 
     Near = remaining gap <= EMA_BLUE_APPROACH_ATR. About-to-cross = the same
     red velocity on the next bar would clear blue. Flattening or turning away
@@ -973,27 +619,17 @@ def red_on_blue_trajectory(stack: EmaStack, atr: float = 0.0, cfg: Mark2Config |
     """
     if float(stack.ema50) <= 0 or float(stack.prev50) <= 0:
         return False
+    if stack.ema9 <= stack.ema20 or stack.ema9 >= stack.ema50:
+        return False
+    red_delta = float(stack.ema9) - float(stack.prev9)
+    gap = float(stack.ema50) - float(stack.ema9)
+    prev_gap = float(stack.prev50) - float(stack.prev9)
+    if red_delta <= 0 or gap >= prev_gap:
+        return False
     atr_v = max(float(atr), 1e-9)
     near_mult = float(getattr(cfg, "EMA_BLUE_APPROACH_ATR", 0.35) or 0.35) if cfg else 0.35
-    red_delta = float(stack.ema9) - float(stack.prev9)
-    if long:
-        if stack.ema9 <= stack.ema20 or stack.ema9 >= stack.ema50:
-            return False
-        gap = float(stack.ema50) - float(stack.ema9)
-        prev_gap = float(stack.prev50) - float(stack.prev9)
-        if red_delta <= 0 or gap >= prev_gap:
-            return False
-        near = gap <= (near_mult * atr_v) + 1e-12
-        would_cross = (float(stack.ema9) + red_delta) >= float(stack.ema50) - 1e-12
-        return near or would_cross
-    if stack.ema9 >= stack.ema20 or stack.ema9 <= stack.ema50:
-        return False
-    gap = float(stack.ema9) - float(stack.ema50)
-    prev_gap = float(stack.prev9) - float(stack.prev50)
-    if red_delta >= 0 or gap >= prev_gap:
-        return False
     near = gap <= (near_mult * atr_v) + 1e-12
-    would_cross = (float(stack.ema9) + red_delta) <= float(stack.ema50) + 1e-12
+    would_cross = (float(stack.ema9) + red_delta) >= float(stack.ema50) - 1e-12
     return near or would_cross
 
 
@@ -1007,14 +643,11 @@ def long_sniper_reason(
 ) -> str:
     """Empty string = take the long. Otherwise the ignore tag.
 
-    Spread 20/50 first, then 9 crosses 20, then 9 crosses 50. Already-stacked
-    longs (9 above white and blue, still rising) are also a fire.
+    Spread 20/50 first, then 9 crosses 20, then 9 crosses 50. A tight knot
+    or leftover already through blue is not a long.
     """
     if cfg is not None and not bool(getattr(cfg, "EMA_LONG_SNIPER", True)):
-        if leftover_stacked_long(stack) and leftover_long_allowed(cfg):
-            pass
-        else:
-            return "SNIPER_OFF"
+        return ""
     if float(stack.ema50) <= 0 or float(stack.prev50) <= 0:
         return "BLUE_WARMUP"
     if not red_rising(stack):
@@ -1022,9 +655,7 @@ def long_sniper_reason(
     if bars is not None and len(bars) >= 4:
         st = _classify_intersection_bars(stack, bars, cfg, atr, long=True)
     else:
-        st = _classify_intersection_stack(stack, cfg, atr, long=True, bars=bars)
-    if st.fire or str(st.reject or "").startswith("REJECT_"):
-        _log_long_quality(evaluate_ema_long_quality(stack, cfg, atr, bars=bars))
+        st = _classify_intersection_stack(stack, cfg, atr, long=True)
     return st.reject
 
 
@@ -1083,7 +714,7 @@ def rsi_bull_long_reason(
     """Empty string = take the bullish-stack long. Otherwise the ignore tag.
 
     First bar the stack becomes red > white > blue, with red still rising.
-    Already stacked leftover still fires once if red is rising (stack lock blocks re-entry).
+    An already-stacked leftover after a runner is not a new long.
     """
     if cfg is not None and not bool(getattr(cfg, "EMA_RSI_LONG", True)):
         return "RSI_LONG_OFF"
@@ -1092,11 +723,7 @@ def rsi_bull_long_reason(
     if not red_rising(stack):
         return "RED_FALLING"
     if not red_clears_white_and_blue(stack):
-        if red_above_white_and_blue(stack) and red_rising(stack):
-            if leftover_stacked_long(stack) and not leftover_long_allowed(cfg):
-                return "LEFTOVER_OFF"
-            return ""
-        return "NO_SNIPER"
+        return "STACK_STALE"
     return ""
 
 
@@ -1260,9 +887,6 @@ def ema_long_arm_ok(
     completed: EmaStack | None = None,
     live_tick: bool = False,
     regime: str = "",
-    bias: str = "",
-    atr: float = 0.0,
-    bars: list[dict] | None = None,
 ) -> tuple[bool, str]:
     """Second gate. Bar-close, live scan, and arm must all pass this.
 
@@ -1281,13 +905,12 @@ def ema_long_arm_ok(
         return False, "CHOPPY"
     if not red_rising(stack):
         return False, "RED_FALLING"
-    one_per = cfg is None or bool(getattr(cfg, "EMA_ONE_PER_STACK", True))
-    taken = bool(stack_taken) and one_per and not stack_lock_should_clear(stack)
+    taken = bool(stack_taken) and not stack_lock_should_clear(stack)
     if taken and red_above_white_and_blue(stack):
         return False, "STACK_USED"
     tag = str(why or "").upper()
     if not tag:
-        tag, reject = ema_long_signal_why(stack, cfg, bias=bias, atr=atr, regime=regime, bars=bars)
+        tag, reject = ema_long_signal_why(stack, cfg, regime=regime)
         if not tag:
             return False, reject or "NO_SNIPER"
     if live_tick and tag == "EMA_RSI_LONG":
@@ -1296,11 +919,7 @@ def ema_long_arm_ok(
         done = completed
         if done is None or not red_above_white_and_blue(done):
             return False, "WAIT_CLOSE"
-        done_taken = (
-            bool(stack_taken)
-            and (cfg is None or bool(getattr(cfg, "EMA_ONE_PER_STACK", True)))
-            and not stack_lock_should_clear(done)
-        )
+        done_taken = bool(stack_taken) and not stack_lock_should_clear(done)
         if done_taken and red_above_white_and_blue(done):
             return False, "STACK_USED"
     if live_tick and tag == "EMA_CHOP_LONG":
@@ -1316,14 +935,13 @@ def ema_long_arm_ok(
             return False, chop_long_reason(stack, cfg)
         return True, ""
     if tag in ("EMA_SNIPER_LONG", "EMA_INTERSECTION_LONG"):
-        reject = long_sniper_reason(stack, cfg, bias=bias, atr=atr, bars=bars)
+        reject = long_sniper_reason(stack, cfg)
         if reject:
             return False, reject
         return True, ""
     if tag == "EMA_RSI_LONG":
         if not red_clears_white_and_blue(stack):
-            if not (red_above_white_and_blue(stack) and red_rising(stack)):
-                return False, "NO_SNIPER"
+            return False, "STACK_STALE"
         return True, ""
     return False, "NO_SNIPER"
 
@@ -1357,9 +975,6 @@ def ema_long_decision(
         completed=completed,
         live_tick=live_tick,
         regime=regime,
-        bias=bias,
-        atr=atr,
-        bars=bars,
     )
     return ok, reason, why
 
@@ -1657,7 +1272,7 @@ def _update_runner_stall(trade, completed_anchor: float | None) -> int:
 
 
 def profit_keep_usd(peak_usd: float, cfg: Mark2Config | None = None) -> float:
-    """$80 floor at $100, scaling to ~$550 at $600. 0 below $100 so the trade can grow."""
+    """$80 floor at $100, scaling to ~$550 at $600. 0 below $100."""
     if cfg is None:
         return 0.0
     peak = float(peak_usd)
@@ -2090,7 +1705,7 @@ def ema_entry_signal(
         return Side.SHORT, "EMA_FADE_SHORT"
     long_on = bool(getattr(cfg, "EMA_LONG_SNIPER", True))
     short_on = bool(getattr(cfg, "EMA_SHORT_SNIPER", True)) and bool(
-        getattr(cfg, "EMA_ALLOW_SHORT", False)
+        getattr(cfg, "EMA_ALLOW_SHORT", True)
     )
     long_reject = long_sniper_reason(stack, cfg, bias=bias, atr=atr, bars=bars) if long_on else "NO_SNIPER"
     short_reject = short_sniper_reason(stack, cfg, bias=bias, atr=atr, bars=bars) if short_on else "SHORT_OFF"
@@ -2125,14 +1740,9 @@ def ema_entry_signal(
 
 def _ema_engine_state(trade) -> EngineState:
     st = str(getattr(trade, "ema_trade_state", "") or "")
-    ai = str(getattr(trade, "ai_exit_state", "") or "")
-    if st in ("RUNNER", "RUNNER_HEALTHY", "RUNNER_WATCH", "RUNNER_REACCELERATING", "MOMENTUM_DYING"):
+    if st == "RUNNER":
         return EngineState.RUNNER_MANAGEMENT
-    if st in ("CONFIRMED", "CONFIRMED_TREND", "TRADE_PROTECTED"):
-        return EngineState.TRADE_PROFITABLE
-    if ai in ("RUNNER_HEALTHY", "RUNNER_WATCH", "RUNNER_REACCELERATING", "MOMENTUM_DYING"):
-        return EngineState.RUNNER_MANAGEMENT
-    if ai in ("TRADE_PROTECTED",):
+    if st in ("CONFIRMED", "CONFIRMED_TREND"):
         return EngineState.TRADE_PROFITABLE
     return EngineState.TRADE_INITIAL
 
@@ -2225,75 +1835,6 @@ def mfe_giveback_floor_pts(mfe: float, cfg: Mark2Config | None = None) -> float:
     return max(0.0, float(mfe) * (1.0 - give))
 
 
-def mfe_open_pts(side: Side, entry: float, price: float) -> float:
-    if side == Side.LONG:
-        return float(price) - float(entry)
-    if side == Side.SHORT:
-        return float(entry) - float(price)
-    return 0.0
-
-
-def mfe_losing_momentum(
-    trade,
-    *,
-    price: float,
-    cfg: Mark2Config | None = None,
-    stall_bars: int = 0,
-    rsi: float | None = None,
-    state: str = "",
-) -> bool:
-    """Still green, but has given back 35% of MFE. Runners ignore stall/RSI so a pause is not a floor."""
-    if cfg is not None and not bool(getattr(cfg, "MFE_FADE_LOCK", False)):
-        return False
-    side = getattr(trade, "side", Side.NONE)
-    entry = float(getattr(trade, "entry", 0) or 0)
-    mfe = float(getattr(trade, "mfe", 0) or 0)
-    px = float(price)
-    open_pts = mfe_open_pts(side, entry, px)
-    if mfe <= 1e-12 or open_pts <= 1e-12:
-        return False
-    if side == Side.LONG and px + 1e-9 >= float(getattr(trade, "peak", px) or px):
-        return False
-    if side == Side.SHORT and px - 1e-9 <= float(getattr(trade, "peak", px) or px):
-        return False
-    give_frac = max(0.0, (mfe - open_pts) / mfe)
-    need = 0.35
-    stall_need = 2
-    rsi_drop = 5.0
-    if cfg is not None:
-        need = float(getattr(cfg, "MFE_FADE_GIVE_FRAC", 0.35) or 0.35)
-        stall_need = max(1, int(getattr(cfg, "MFE_FADE_STALL_BARS", 2) or 2))
-        rsi_drop = float(getattr(cfg, "MFE_FADE_RSI_DROP", 5.0) or 5.0)
-    if give_frac + 1e-12 >= need:
-        return True
-    phase = str(state or getattr(trade, "ema_trade_state", "") or "")
-    if phase == "RUNNER":
-        return False
-    if int(stall_bars) >= stall_need:
-        return True
-    rsi_peak = float(getattr(trade, "rsi_peak", 0) or 0)
-    if rsi is not None and rsi_peak > 0 and float(rsi) + rsi_drop <= rsi_peak + 1e-12:
-        return True
-    return False
-
-
-def mfe_lock_active(
-    trade,
-    *,
-    price: float,
-    state: str,
-    cfg: Mark2Config | None = None,
-    stall_bars: int = 0,
-    rsi: float | None = None,
-) -> bool:
-    """Fade lock helper. Off on Recon Sniper; runners use the 70% MFE floor."""
-    if float(getattr(trade, "mfe", 0) or 0) <= 1e-12:
-        return False
-    return mfe_losing_momentum(
-        trade, price=price, cfg=cfg, stall_bars=stall_bars, rsi=rsi, state=state
-    )
-
-
 def _manage_ema_classic_exit(
     trade,
     *,
@@ -2372,9 +1913,6 @@ def manage_ema_hold(
     rsi_prev: float | None = None,
     account_equity: float | None = None,
     bars: list[dict] | None = None,
-    prev9: float | None = None,
-    prev20: float | None = None,
-    prev50: float | None = None,
 ) -> tuple[bool, str, EngineState]:
     """Compression / structure / dollar floor. Grow-mode stall bank on a small account."""
     if cfg is not None and bool(getattr(cfg, "EMA_CLASSIC_EXIT", False)):
@@ -2392,34 +1930,6 @@ def manage_ema_hold(
         trade.trough = max(float(getattr(trade, "trough", px) or px), px)
         trade.mfe = max(0.0, entry - float(trade.peak))
         trade.mae = max(0.0, float(trade.trough) - entry)
-
-    if str(getattr(trade, "ema_entry_tag", "") or "").startswith("413"):
-        from .breakout_413 import manage_413_hold
-
-        return manage_413_hold(
-            trade,
-            price=px,
-            bars=bars,
-            cfg=cfg,
-            ema9=ema9,
-        )
-    if cfg is not None and bool(getattr(cfg, "ENABLE_AI_EXIT_ENGINE", False)):
-        from .ai_exit import manage_ai_exit
-
-        return manage_ai_exit(
-            trade,
-            price=px,
-            exit_armed=exit_armed,
-            cfg=cfg,
-            ema9=ema9,
-            ema20=ema20,
-            ema50=ema50,
-            prev9=prev9,
-            prev20=prev20,
-            prev50=prev50,
-            atr=atr,
-            bars=bars,
-        )
 
     hard = float(getattr(trade, "hard_stop", 0) or 0) or float(trade.stop)
     trade.hard_stop = hard

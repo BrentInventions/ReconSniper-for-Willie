@@ -1,7 +1,6 @@
 """AI Scout — second set of eyes on the same 9 / 20 / 50 intersection.
 
-Take a 9/50 confirm, including leftover stacked longs that are still rising.
-Leftover shorts stay HOLD.
+Take only a 9/50 confirm after a spread 9/20. Leftover stacks stay HOLD.
 """
 
 from __future__ import annotations
@@ -90,7 +89,7 @@ def scout_opportunity(
     scout_long_taken: bool = False,
     scout_short_taken: bool = False,
 ) -> ScoutView:
-    """HOLD / TAKE / OVERRIDE — longs can take a stacked rising 9. Short leftovers stay HOLD."""
+    """HOLD / TAKE / OVERRIDE — intersection only. No leftover stack hops."""
     cfg = cfg or Mark2Config()
     if not bool(getattr(cfg, "ENABLE_AI_SCOUT", True)):
         return _hold(["SCOUT OFF"])
@@ -100,7 +99,7 @@ def scout_opportunity(
         return _hold(["WARMING UP BLUE"])
 
     allow_long = bool(getattr(cfg, "AI_SCOUT_LONG", True))
-    allow_short = bool(getattr(cfg, "AI_SCOUT_SHORT", False))
+    allow_short = bool(getattr(cfg, "AI_SCOUT_SHORT", True))
     allow_override = bool(getattr(cfg, "AI_SCOUT_OVERRIDE_MISSED", True))
     max_ext = float(getattr(cfg, "AI_SCOUT_MAX_EXT_ATR", 2.8) or 2.8)
     take_ext = float(getattr(cfg, "MAX_ENTRY_EXTENSION_ATR", 0.60) or 0.60)
@@ -146,14 +145,14 @@ def scout_opportunity(
 
     if allow_long and not scout_long_taken and fresh_long:
         ext = _ext_atr(px, stack, atr, Side.LONG)
-        if ext <= max_ext + 1e-12:
+        if ext <= take_ext + 1e-12:
             return ScoutView(
                 side=Side.LONG,
                 action="TAKE",
                 why="AI_SCOUT_LONG",
                 confidence=80.0,
                 bullets=[
-                    "EMA_INTERSECTION_LONG · 9 ABOVE WHITE AND BLUE",
+                    "EMA_INTERSECTION_LONG · 9/50 CONFIRM",
                     f"PRE-CROSS SEP {ix.pre_sep_atr:.2f} ATR",
                     f"BOT SAID {watch or 'WAIT'} · EXT {ext:.2f} ATR",
                 ],
@@ -181,7 +180,7 @@ def scout_opportunity(
         f"TIGHT {str(hud['tight']).upper()} · BOT {watch or 'WAIT'}",
     ]
     if red_above_white_and_blue(stack) and not fresh_long:
-        bullets.append("STACKED LONG · WAITING FOR 9 TO RISE")
+        bullets.append("STACKED · NOT A NEW INTERSECTION · HOLD")
     elif red_below_white_and_blue(stack) and not fresh_short:
         bullets.append("STACKED UNDER · NOT A NEW INTERSECTION · HOLD")
     elif ix.tight:
